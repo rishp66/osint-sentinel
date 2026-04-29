@@ -1,6 +1,6 @@
 # OSINT Sentinel — Multi-Agent Threat Intelligence Platform
 
-A full-stack OSINT aggregation platform that queries **6+ intelligence sources in parallel** and synthesizes results using an **LLM-powered agent** (Gemma 4 31B via Lightning.ai) into an actionable threat brief and full markdown intelligence report.
+A full-stack OSINT aggregation platform that queries **14+ intelligence sources in parallel** and synthesizes results using an **LLM-powered agent** (Gemma 4 31B via Lightning.ai) into an actionable threat brief and full markdown intelligence report.
 
 ## Architecture
 

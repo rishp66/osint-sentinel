@@ -1,0 +1,357 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+/* ─────────────────────────────────────────────────────────
+   Base type rhythm. Inter loaded with cv11/ss01 features
+   and a global -0.01em tracking — small but it makes the
+   whole page feel typeset rather than rendered.
+   ───────────────────────────────────────────────────────── */
+html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+
+body {
+  background-color: #08080b;
+  color: #e7e7ea;
+  font-family: 'Inter Variable', 'Inter', system-ui, sans-serif;
+  font-feature-settings: 'cv11', 'ss01', 'ss03';
+  letter-spacing: -0.01em;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+::selection { background: rgba(139,92,246,0.35); color: #fff; }
+
+/* Scrollbar — quieter, more editorial */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(139,92,246,0.18); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(139,92,246,0.45); }
+
+/* ─────────────────────────────────────────────────────────
+   Reusable display class — Space Grotesk with proper
+   tracking. Anywhere we want hero-grade type, use this.
+   ───────────────────────────────────────────────────────── */
+.display-tight {
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  letter-spacing: -0.04em;
+  line-height: 0.95;
+}
+
+/* Editorial italic accent — the brand-mark move on "Sentinel" */
+.serif-italic {
+  font-family: 'Instrument Serif', Georgia, serif;
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+}
+
+/* Mono labels — uppercase eyebrows ("TARGET", "v1.0", etc.) */
+.eyebrow {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.15em;
+  color: #9ca3af;
+}
+
+/* ─────────────────────────────────────────────────────────
+   Background atmosphere
+   ───────────────────────────────────────────────────────── */
+
+/* Faint editorial grid — much subtler than the original */
+.grid-bg {
+  background-image:
+    linear-gradient(rgba(139,92,246,0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(139,92,246,0.045) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(ellipse 90% 70% at 50% 30%, #000 40%, transparent 100%);
+  -webkit-mask-image: radial-gradient(ellipse 90% 70% at 50% 30%, #000 40%, transparent 100%);
+}
+
+/* SVG fractal-noise grain — keeps the dark background from looking flat */
+.grain {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180' viewBox='0 0 180 180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.6 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  opacity: 0.035;
+  mix-blend-mode: overlay;
+}
+
+/* ─────────────────────────────────────────────────────────
+   Surfaces
+   ───────────────────────────────────────────────────────── */
+
+/* Hairline border + subtle inner highlight — Linear/Vercel signature */
+.hairline {
+  border: 1px solid rgba(255,255,255,0.06);
+  background: linear-gradient(180deg, rgba(255,255,255,0.015), rgba(255,255,255,0));
+}
+
+/* Gradient border on hover — used on capability cards & primary CTA */
+.gradient-border {
+  position: relative;
+}
+.gradient-border::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg, rgba(139,92,246,0.5), rgba(103,232,249,0.18) 50%, rgba(139,92,246,0) 100%);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 0.3s ease-out;
+  pointer-events: none;
+}
+.gradient-border:hover::before { opacity: 1; }
+
+/* ─────────────────────────────────────────────────────────
+   Focus rings — visible, branded, accessible
+   ───────────────────────────────────────────────────────── */
+.focus-ring:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px #08080b, 0 0 0 4px rgba(139,92,246,0.55);
+}
+
+/* ─────────────────────────────────────────────────────────
+   Buttons — gradient shift on hover, not opacity
+   ───────────────────────────────────────────────────────── */
+.btn-primary {
+  position: relative;
+  background: linear-gradient(180deg, #1d1740 0%, #0a0814 60%, #1d1b4b 100%);
+  background-size: 100% 200%;
+  background-position: 0% 0%;
+  transition: background-position 350ms ease-out, box-shadow 250ms ease-out, transform 200ms ease-out;
+  box-shadow: 0 0 0 1px rgba(139,92,246,0.35), 0 8px 24px -12px rgba(139,92,246,0.55);
+}
+.btn-primary:hover {
+  background-position: 0% 100%;
+  box-shadow: 0 0 0 1px rgba(167,139,250,0.6), 0 12px 32px -8px rgba(139,92,246,0.7);
+  transform: translateY(-1px);
+}
+.btn-primary:active { transform: translateY(0); }
+
+.btn-ghost {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.08);
+  transition: border-color 200ms ease-out, background-color 200ms ease-out, color 200ms ease-out, transform 200ms ease-out;
+}
+.btn-ghost:hover {
+  border-color: rgba(255,255,255,0.18);
+  background-color: rgba(255,255,255,0.025);
+  transform: translateY(-1px);
+}
+
+/* ─────────────────────────────────────────────────────────
+   Glow utilities — only on interactive elements
+   ───────────────────────────────────────────────────────── */
+.glow-purple { box-shadow: 0 0 30px rgba(139,92,246,0.3), 0 0 80px rgba(139,92,246,0.1); }
+.glow-cyan   { box-shadow: 0 0 18px rgba(103,232,249,0.25), 0 0 50px rgba(103,232,249,0.08); }
+.glow-amber  { box-shadow: 0 0 18px rgba(245,158,11,0.25), 0 0 50px rgba(245,158,11,0.08); }
+
+/* Card hover — slight lift, never aggressive */
+.card-hover {
+  transition: transform 0.3s ease, box-shadow 0.3s ease, border-color 0.3s ease;
+}
+.card-hover:hover {
+  transform: translateY(-2px);
+  border-color: rgba(139,92,246,0.4);
+  box-shadow: 0 12px 36px -16px rgba(139,92,246,0.4);
+}
+
+/* Glow border — kept for back-compat with existing components */
+.glow-border { border: 1px solid rgba(139,92,246,0.2); }
+.glow-border:hover {
+  border-color: rgba(139,92,246,0.6);
+  box-shadow: 0 0 20px rgba(139,92,246,0.2);
+}
+
+/* ─────────────────────────────────────────────────────────
+   Live status pulse — used by the "online" health badge
+   ───────────────────────────────────────────────────────── */
+.status-dot {
+  position: relative;
+  width: 6px; height: 6px;
+  border-radius: 9999px;
+  background: #34d399;
+  box-shadow: 0 0 8px rgba(52,211,153,0.7);
+}
+.status-dot::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border-radius: 9999px;
+  border: 1px solid rgba(52,211,153,0.5);
+  animation: softPulse 2.6s ease-in-out infinite;
+}
+
+/* ─────────────────────────────────────────────────────────
+   Radar visual — concentric rings + sweep + IOC pings
+   ───────────────────────────────────────────────────────── */
+.radar-sweep {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  background: conic-gradient(
+    from 0deg,
+    rgba(139,92,246,0)   0deg,
+    rgba(139,92,246,0.35) 28deg,
+    rgba(139,92,246,0.0)  64deg,
+    rgba(139,92,246,0)   360deg
+  );
+  -webkit-mask: radial-gradient(circle, #000 56%, transparent 58%);
+          mask: radial-gradient(circle, #000 56%, transparent 58%);
+  animation: radarSpin 5s linear infinite;
+  filter: blur(0.5px);
+  /* Promote to its own compositor layer — eliminates the first-paint flash
+     in Safari where the conic-gradient mask was being recomputed each tick. */
+  will-change: transform;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+.radar-ping {
+  position: absolute;
+  width: 10px; height: 10px;
+  border-radius: 9999px;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 8px currentColor;
+}
+.radar-ping::after {
+  content: '';
+  position: absolute;
+  inset: -5px;
+  border-radius: 9999px;
+  border: 1.5px solid currentColor;
+  opacity: 0.55;
+  animation: pingRadar 2.8s cubic-bezier(0,0,0.2,1) infinite;
+}
+
+/* ─────────────────────────────────────────────────────────
+   Live IOC ticker (vertical scroll)
+   ───────────────────────────────────────────────────────── */
+.ticker-mask {
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 14%, #000 86%, transparent 100%);
+          mask-image: linear-gradient(180deg, transparent 0%, #000 14%, #000 86%, transparent 100%);
+}
+
+/* ─────────────────────────────────────────────────────────
+   Search input glow — preserved (used by full-size variant)
+   ───────────────────────────────────────────────────────── */
+.glow-search { isolation: isolate; }
+.glow-layer {
+  position: absolute; inset: 0; z-index: -1; overflow: hidden;
+  border-radius: 14px; pointer-events: none;
+}
+.glow-layer::before {
+  content: ''; position: absolute; z-index: -2;
+  width: 1100px; height: 1100px; top: 50%; left: 50%;
+  background-repeat: no-repeat;
+  transform: translate(-50%, -50%) rotate(60deg);
+  transition: transform 2s ease;
+}
+.glow-layer-outer { filter: blur(4px); }
+.glow-layer-outer::before { background: conic-gradient(#000, #402fb5 5%, #000 38%, #000 50%, #cf30aa 60%, #000 87%); }
+.glow-search:hover .glow-layer-outer::before { transform: translate(-50%, -50%) rotate(-120deg); }
+.glow-search:focus-within .glow-layer-outer::before { transform: translate(-50%, -50%) rotate(420deg); transition: transform 4s ease; }
+
+.glow-layer-mid { filter: blur(3px); }
+.glow-layer-mid::before {
+  width: 700px; height: 700px;
+  background: conic-gradient(rgba(0,0,0,0), #18116a, rgba(0,0,0,0) 10%, rgba(0,0,0,0) 50%, #6e1b60, rgba(0,0,0,0) 60%);
+  transform: translate(-50%, -50%) rotate(82deg);
+}
+.glow-search:hover .glow-layer-mid::before { transform: translate(-50%, -50%) rotate(-98deg); }
+.glow-search:focus-within .glow-layer-mid::before { transform: translate(-50%, -50%) rotate(442deg); transition: transform 4s ease; }
+
+.glow-layer-inner { filter: blur(0.6px); }
+.glow-layer-inner::before {
+  width: 700px; height: 700px;
+  background: conic-gradient(#1c191c, #402fb5 5%, #1c191c 14%, #1c191c 50%, #cf30aa 60%, #1c191c 64%);
+  filter: brightness(1.3);
+  transform: translate(-50%, -50%) rotate(70deg);
+}
+.glow-search:hover .glow-layer-inner::before { transform: translate(-50%, -50%) rotate(-110deg); }
+.glow-search:focus-within .glow-layer-inner::before { transform: translate(-50%, -50%) rotate(430deg); transition: transform 4s ease; }
+
+/* Compact-input focus glow — used by the sidebar scan composer */
+.composer-input:focus {
+  border-color: rgba(139,92,246,0.6);
+  box-shadow: 0 0 0 1px rgba(139,92,246,0.4), 0 0 22px -4px rgba(139,92,246,0.45);
+}
+
+/* ─────────────────────────────────────────────────────────
+   Entrance animations
+   ───────────────────────────────────────────────────────── */
+.animate-fade-up { animation: fadeUp 0.4s ease-out both; }
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in { animation: fadeIn 0.5s ease-out both; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* ─────────────────────────────────────────────────────────
+   Matrix-rain loader flourishes (preserved)
+   ───────────────────────────────────────────────────────── */
+.matrix-title-glow { animation: matrixTitleGlow 2.4s ease-in-out infinite; }
+@keyframes matrixTitleGlow {
+  0%, 100% { text-shadow: 0 0 18px rgba(139, 92, 246, 0.6), 0 0 40px rgba(139, 92, 246, 0.25); }
+  50%      { text-shadow: 0 0 32px rgba(139, 92, 246, 0.95), 0 0 70px rgba(139, 92, 246, 0.45); }
+}
+
+.matrix-caret::after {
+  content: '▍';
+  display: inline;
+  margin-left: 4px;
+  color: rgba(139, 92, 246, 0.9);
+  animation: caretBlink 1s steps(2, start) infinite;
+}
+@keyframes caretBlink { to { visibility: hidden; } }
+
+/* ─────────────────────────────────────────────────────────
+   Title glow utility (preserved)
+   ───────────────────────────────────────────────────────── */
+.title-glow { animation: titleGlow 3s ease-in-out infinite; }
+@keyframes titleGlow {
+  0%, 100% { filter: drop-shadow(0 0 20px rgba(139,92,246,0.5)); }
+  50%       { filter: drop-shadow(0 0 40px rgba(139,92,246,0.9)); }
+}
+
+.cyan-pulse { animation: cyanPulse 2s ease-in-out infinite; }
+@keyframes cyanPulse {
+  0%, 100% { box-shadow: 0 0 6px rgba(0,255,255,0.5); }
+  50%       { box-shadow: 0 0 18px rgba(0,255,255,0.9); }
+}
+
+@keyframes softPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.6; transform: scale(0.75); }
+}
+
+@keyframes radarSpin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes pingRadar {
+  0%   { transform: scale(0.4); opacity: 0.9; }
+  80%  { transform: scale(2.6); opacity: 0; }
+  100% { transform: scale(2.6); opacity: 0; }
+}
+
+/* Reduced-motion: kill the orbit/sweep choreography */
+@media (prefers-reduced-motion: reduce) {
+  .radar-sweep, .ticker-mask > *, .matrix-title-glow, .title-glow, .cyan-pulse {
+    animation: none !important;
+  }
+}
+
+@layer base {
+  :root {
+    --gradient-color: #8b5cf6;
+    --sparkles-color: #ffffff;
+  }
+}

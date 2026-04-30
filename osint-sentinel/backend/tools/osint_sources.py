@@ -15,6 +15,7 @@ from config.settings import get_settings
 # requests to the same host (e.g. urlscan.io, abuse.ch) skip TCP/TLS handshake.
 # requests.Session is thread-safe enough for our parallel ThreadPoolExecutor use.
 _SESSION = requests.Session()
+_SESSION.trust_env = False  # ignore HTTP_PROXY/HTTPS_PROXY env vars — connect directly
 _SESSION.headers.update({"User-Agent": "osint-sentinel/0.1 (+https://github.com)"})
 _adapter = HTTPAdapter(pool_connections=32, pool_maxsize=32, max_retries=0)
 _SESSION.mount("https://", _adapter)

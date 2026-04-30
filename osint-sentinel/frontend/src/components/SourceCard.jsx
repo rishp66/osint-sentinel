@@ -29,6 +29,7 @@ const SOURCE_META = {
   malwarebazaar:   { label: 'MalwareBazaar',   icon: FileWarning,  accent: '#ea580c', category: 'threat',         logo: FAV('bazaar.abuse.ch') },
   pulsedive:       { label: 'Pulsedive',       icon: Activity,     accent: '#ec4899', category: 'threat',         logo: FAV('pulsedive.com') },
   dns_resolution:  { label: 'DNS Resolution',  icon: Globe2,       accent: '#94a3b8', category: 'infrastructure',  logo: null },
+  urlhaus:         { label: 'URLhaus',         icon: FileWarning,  accent: '#f97316', category: 'threat',         logo: FAV('urlhaus.abuse.ch') },
 };
 
 export const SOURCE_CATEGORIES = {
@@ -514,6 +515,31 @@ function PulsediveContent({ data }) {
   );
 }
 
+function URLhausContent({ data }) {
+  const urls = data.urls || [];
+  return (
+    <>
+      <DataRow label="Query status" value={data.query_status} mono />
+      <DataRow label="URL count" value={data.url_count != null ? String(data.url_count) : null} mono />
+      {urls.length > 0 && (
+        <div className="mt-3 space-y-1">
+          <span className="text-white/45 text-[10px] font-mono uppercase tracking-wider">Recent URLs</span>
+          {urls.slice(0, 4).map((u, i) => (
+            <div key={i} className="bg-black/30 border border-white/[0.05] rounded-lg p-2">
+              <div className="text-[11px] font-mono text-orange-300 truncate">{u.url}</div>
+              <div className="flex items-center gap-2 mt-1 text-[10px] font-mono text-white/55">
+                {u.threat && <span>{u.threat}</span>}
+                {u.url_status && <span className={u.url_status === 'online' ? 'text-red-400' : 'text-white/40'}>{u.url_status}</span>}
+                {u.date_added && <span>{u.date_added.slice(0, 10)}</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
 function DnsResolutionContent({ data }) {
   const ips = data.ip_addresses || data.ips || [];
   return (
@@ -550,6 +576,7 @@ const CONTENT_MAP = {
   malwarebazaar: MalwareBazaarContent,
   pulsedive: PulsediveContent,
   dns_resolution: DnsResolutionContent,
+  urlhaus: URLhausContent,
 };
 
 /* ─────────────────────────────────────────────────────────

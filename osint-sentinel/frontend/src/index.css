@@ -9,7 +9,7 @@
    and a global -0.01em tracking — small but it makes the
    whole page feel typeset rather than rendered.
    ───────────────────────────────────────────────────────── */
-html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; scroll-behavior: smooth; }
 
 body {
   background-color: #08080b;

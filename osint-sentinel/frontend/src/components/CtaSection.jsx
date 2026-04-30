@@ -7,14 +7,12 @@ const viewport = { once: true, margin: '-80px' };
 
 export default function CtaSection() {
   return (
-    <section className="relative px-4 sm:px-6 lg:px-10 py-24 sm:py-32 border-t border-white/[0.05] overflow-hidden text-center"
-      style={{ background: 'linear-gradient(180deg, #0d0d12 0%, #08080b 100%)' }}
-    >
-      {/* Centered radial purple glow */}
+    <section className="relative px-4 sm:px-6 lg:px-10 py-24 sm:py-32 overflow-hidden text-center">
+      {/* Centered radial purple glow — fades in naturally from the top */}
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
-          background: 'radial-gradient(ellipse 60% 50% at 50% 50%, rgba(139,92,246,0.14) 0%, transparent 70%)',
+          background: 'radial-gradient(ellipse 80% 70% at 50% 50%, rgba(139,92,246,0.15) 0%, transparent 70%)',
         }}
         aria-hidden="true"
       />
@@ -36,11 +34,11 @@ export default function CtaSection() {
         >
           Your SOC team deserves{' '}
           <br className="hidden sm:block" />
-          <span className="serif-italic font-normal text-white/90">better threat intel.</span>
+          better threat intel.
         </h2>
 
-        <p className="text-sentinel-text-dim font-body text-base sm:text-[17px] leading-relaxed max-w-md mx-auto mb-10">
-          Stop toggling between 14 dashboards. Let Sentinel do it in parallel — and explain what it found.
+        <p className="font-body text-white/60 text-base sm:text-[17px] leading-relaxed max-w-md mx-auto mb-10">
+          Stop toggling between OSINT queries. Let Sentinel scan in parallel and showcase its findings in real time.
         </p>
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4">

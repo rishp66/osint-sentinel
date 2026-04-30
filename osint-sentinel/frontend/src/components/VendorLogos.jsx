@@ -1,5 +1,4 @@
 import { motion } from 'framer-motion';
-import { Sparkles } from './ui/Sparkles';
 
 const SOURCES = [
   { id: 'shodan', label: 'Shodan', href: 'https://www.shodan.io', logo: '/logos/shodan.png' },
@@ -8,7 +7,6 @@ const SOURCES = [
   { id: 'greynoise', label: 'GreyNoise', href: 'https://www.greynoise.io', logo: '/logos/greynoise.svg' },
   { id: 'google', label: 'Google', href: 'https://www.google.com', logo: '/logos/google.svg' },
   { id: 'censys', label: 'Censys', href: 'https://censys.com', logo: '/logos/censys.svg' },
-  { id: 'foxyproxy', label: 'Foxyproxy', href: 'https://getfoxyproxy.org', logo: '/logos/foxyproxy.svg' },
   { id: 'urlscan', label: 'urlscan.io', href: 'https://urlscan.io', logo: '/logos/urlscan.svg' },
   { id: 'urlhaus', label: 'URLhaus', href: 'https://urlhaus.abuse.ch', logo: '/logos/urlhaus.svg' },
   { id: 'threatfox', label: 'ThreatFox', href: 'https://threatfox.abuse.ch', logo: '/logos/threatfox.svg' },
@@ -34,10 +32,10 @@ function Tile({ source, index }) {
       <img
         src={source.logo}
         alt={source.label}
-        width="64"
-        height="64"
+        width="80"
+        height="80"
         decoding="async"
-        className="h-[66%] w-[66%] object-contain"
+        className="h-[72%] w-[72%] object-contain"
       />
     </motion.a>
   );
@@ -45,21 +43,37 @@ function Tile({ source, index }) {
 
 export default function VendorLogos() {
   return (
-    <section className="border-t border-white/[0.05] overflow-hidden">
-      <div className="relative w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-10 py-16 sm:py-20">
+    <section id="integrations" className="overflow-hidden scroll-mt-28">
+      <div className="relative w-full py-16 sm:py-20">
+        {/* Centered radial glow — mirrors the CtaSection treatment */}
         <div
           className="pointer-events-none absolute inset-0"
           style={{
             background:
-              'radial-gradient(ellipse 70% 45% at 18% 8%, rgba(34,211,238,0.11), transparent 60%), radial-gradient(ellipse 65% 45% at 82% 0%, rgba(56,189,248,0.08), transparent 60%)',
+              'radial-gradient(ellipse 80% 70% at 50% 50%, rgba(139,92,246,0.13) 0%, transparent 70%)',
           }}
         />
+        {/* Top fade so the section bleeds in rather than starting abruptly */}
+        <div
+          className="pointer-events-none absolute inset-x-0 top-0 h-24"
+          style={{ background: 'linear-gradient(180deg, rgba(8,8,11,1) 0%, transparent 100%)' }}
+          aria-hidden="true"
+        />
 
-        <div className="relative text-center mb-10 sm:mb-12">
-          <h2 className="display-tight text-2xl sm:text-3xl lg:text-4xl font-bold text-white leading-none sm:leading-tight tracking-tight whitespace-nowrap">
-            THREAT INTELLIGENCE SOURCES
+        <div className="relative text-center px-4 sm:px-6 lg:px-10 mb-10 sm:mb-12">
+          <h2
+            className="display-tight font-bold text-white leading-none"
+            style={{ fontSize: 'clamp(32px, 5vw, 72px)' }}
+          >
+            <span className="block">THREAT INTELLIGENCE</span>
+            <span
+              className="serif-italic block font-normal text-white/90"
+              style={{ textShadow: '0 0 40px rgba(139,92,246,0.35)' }}
+            >
+              Sources.
+            </span>
           </h2>
-          <p className="mt-3 font-mono text-[11px] sm:text-xs uppercase tracking-[0.18em] text-cyan-200/70">
+          <p className="mt-3 font-mono text-[11px] sm:text-xs uppercase tracking-[0.18em] text-sentinel-purple-light/70">
             Real-time enrichment layer
           </p>
         </div>
@@ -78,29 +92,6 @@ export default function VendorLogos() {
             </div>
           </div>
         </div>
-      </div>
-
-      <div className="relative h-72 w-full overflow-hidden [mask-image:radial-gradient(50%_50%,white,transparent)]">
-        <div
-          className="absolute inset-0"
-          style={{
-            background: 'radial-gradient(ellipse 80% 60% at 50% 100%, rgba(139,92,246,0.28), transparent 70%)',
-          }}
-        />
-        <div
-          className="absolute -left-1/2 top-1/2 z-10 w-[200%] rounded-[100%] border-t border-white/[0.12]"
-          style={{
-            aspectRatio: '1/0.7',
-            background: '#08080b',
-          }}
-        />
-        <Sparkles
-          density={1200}
-          speed={0.8}
-          color="#ffffff"
-          opacity={0.6}
-          className="absolute inset-x-0 bottom-0 h-full w-full [mask-image:radial-gradient(50%_50%,white,transparent_85%)]"
-        />
       </div>
 
       <style>{`
@@ -122,8 +113,8 @@ export default function VendorLogos() {
         .ti-segment {
           display: flex;
           align-items: center;
-          gap: 28px;
-          padding-right: 28px;
+          gap: 32px;
+          padding-right: 32px;
         }
 
         .ti-marquee:hover .ti-track {
@@ -131,23 +122,23 @@ export default function VendorLogos() {
         }
 
         .ti-tile {
-          width: 98px;
-          height: 98px;
-          min-width: 98px;
-          border-radius: 18px;
+          width: 120px;
+          height: 120px;
+          min-width: 120px;
+          border-radius: 20px;
           display: flex;
           align-items: center;
           justify-content: center;
           background: linear-gradient(145deg, #0a0f1a, #0f1620);
-          border: 1px solid rgba(34, 211, 238, 0.12);
-          box-shadow: 0 0 24px rgba(34, 211, 238, 0.08);
+          border: 1px solid rgba(139, 92, 246, 0.15);
+          box-shadow: 0 0 24px rgba(139, 92, 246, 0.08);
           transition: transform 250ms ease, border-color 250ms ease, box-shadow 250ms ease;
         }
 
         .ti-tile:hover {
           transform: scale(1.06);
-          border-color: rgba(34, 211, 238, 0.65);
-          box-shadow: 0 0 28px rgba(34, 211, 238, 0.35);
+          border-color: rgba(139, 92, 246, 0.65);
+          box-shadow: 0 0 28px rgba(139, 92, 246, 0.35);
         }
 
         @keyframes ti-marquee {

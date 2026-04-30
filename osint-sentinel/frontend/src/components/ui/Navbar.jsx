@@ -25,16 +25,21 @@ function AnimatedNavLink({ href, to, children, onClick }) {
     );
   }
 
+  const handleClick = (e) => {
+    e.preventDefault();
+    onClick?.();
+  };
+
   return (
-    <a href={href} className={base} onClick={onClick}>
+    <a href={href} className={base} onClick={handleClick}>
       {inner}
     </a>
   );
 }
 
 const NAV_LINKS = [
-  { label: 'Capabilities', anchor: '#capabilities' },
   { label: 'Integrations', anchor: '#integrations' },
+  { label: 'Capabilities', anchor: '#capabilities' },
   { label: 'Sample report', anchor: '#sample-report' },
 ];
 
@@ -67,7 +72,11 @@ export function Navbar({ health }) {
       const el = document.querySelector(anchor);
       el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     } else {
-      navigate(`/${anchor}`);
+      navigate({ pathname: '/', hash: anchor });
+      setTimeout(() => {
+        const el = document.querySelector(anchor);
+        el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 120);
     }
   };
 
@@ -90,35 +99,6 @@ export function Navbar({ health }) {
     </Link>
   );
 
-  const viewSourceBtn = (
-    <a
-      href="https://github.com/rishp66/osint-sentinel"
-      target="_blank"
-      rel="noopener noreferrer"
-      className="px-3.5 py-1.5 text-xs font-mono border border-sentinel-purple/25 bg-white/[0.02] text-white/60 rounded-full hover:border-sentinel-purple/50 hover:text-white/90 transition-all duration-200 no-underline whitespace-nowrap"
-    >
-      View source
-    </a>
-  );
-
-  const launchBtn = !isOnConsole && (
-    <div className="relative group/launch">
-      <div
-        className="absolute inset-0 -m-1.5 rounded-full pointer-events-none opacity-40 blur-md transition-all duration-300 group-hover/launch:opacity-70 group-hover/launch:blur-lg"
-        style={{ background: 'radial-gradient(ellipse, rgba(139,92,246,0.6), transparent 70%)' }}
-      />
-      <Link
-        to="/console"
-        className="relative z-10 px-3.5 py-1.5 text-xs font-mono font-semibold text-white rounded-full whitespace-nowrap no-underline transition-all duration-200"
-        style={{
-          background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
-          boxShadow: '0 0 12px rgba(139,92,246,0.35)',
-        }}
-      >
-        Launch console
-      </Link>
-    </div>
-  );
 
   return (
     <header
@@ -164,8 +144,6 @@ export function Navbar({ health }) {
               <span>{isOnline ? 'online' : 'offline'}</span>
             </div>
           )}
-          {viewSourceBtn}
-          {launchBtn}
         </div>
 
         {/* Mobile hamburger */}
@@ -209,8 +187,6 @@ export function Navbar({ health }) {
               {isOnline ? 'API online' : 'API offline'}
             </div>
           )}
-          {viewSourceBtn}
-          {launchBtn}
         </div>
       </div>
     </header>

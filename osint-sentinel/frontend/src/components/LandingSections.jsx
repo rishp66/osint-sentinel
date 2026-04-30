@@ -61,28 +61,34 @@ function SectionHeader({ eyebrow, title, italic, sub }) {
   );
 }
 
-function CapabilityCard({ icon: Icon, title, body, accent = 'purple', span = '', children }) {
+function CapabilityCard({ icon: Icon, title, body, accent = 'purple', children }) {
   const accentTone = {
     purple: 'text-sentinel-purple-light',
     cyan:   'text-sentinel-cyan',
     amber:  'text-sentinel-amber',
   }[accent];
 
+  const iconBg = {
+    purple: 'border-sentinel-purple/20 bg-sentinel-purple/[0.06]',
+    cyan:   'border-sentinel-cyan/20 bg-sentinel-cyan/[0.06]',
+    amber:  'border-sentinel-amber/20 bg-sentinel-amber/[0.06]',
+  }[accent];
+
   return (
     <motion.div
       variants={fadeUp}
-      className={`gradient-border card-hover hairline rounded-2xl p-6 sm:p-7 relative overflow-hidden ${span}`}
-      style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.018), rgba(255,255,255,0.005))' }}
+      className="gradient-border card-hover hairline rounded-2xl p-7 sm:p-8 relative overflow-hidden flex flex-col"
+      style={{ background: 'linear-gradient(180deg, rgba(255,255,255,0.022), rgba(255,255,255,0.005))' }}
     >
       <div className="flex items-center gap-3 mb-4">
-        <div className="p-2 rounded-lg border border-white/[0.07] bg-white/[0.02]">
-          <Icon className={`w-4 h-4 ${accentTone}`} strokeWidth={1.75} />
+        <div className={`p-2.5 rounded-xl border ${iconBg}`}>
+          <Icon className={`w-5 h-5 ${accentTone}`} strokeWidth={1.75} />
         </div>
-        <h3 className="font-display font-semibold text-white text-sm tracking-tight2">
+        <h3 className="font-display font-semibold text-white text-base tracking-tight">
           {title}
         </h3>
       </div>
-      <p className="text-sentinel-text-dim text-[14px] font-body leading-relaxed">
+      <p className="text-sentinel-text-dim text-[15px] font-body leading-relaxed flex-1">
         {body}
       </p>
       {children}
@@ -92,7 +98,7 @@ function CapabilityCard({ icon: Icon, title, body, accent = 'purple', span = '',
 
 function CapabilityBento() {
   return (
-    <section className="px-4 sm:px-6 lg:px-10 py-16 sm:py-24">
+    <section id="capabilities" className="px-4 sm:px-6 lg:px-10 py-16 sm:py-24 scroll-mt-28">
       <SectionHeader
         eyebrow="What it does"
         title="Operational intel,"
@@ -105,17 +111,17 @@ function CapabilityBento() {
         initial="hidden"
         whileInView="show"
         viewport={viewport}
-        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4 sm:gap-5"
+        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5"
       >
+        {/* Row 1 */}
         <CapabilityCard
           icon={Network}
           title="Parallel multi-source"
           body="14 OSINT integrations queried simultaneously — VirusTotal, AbuseIPDB, Shodan, OTX, GreyNoise, ThreatFox, URLScan, and more — fanned out per scan."
-          span="lg:col-span-3"
         >
           <div className="mt-5 flex flex-wrap gap-1.5">
             {['VirusTotal', 'Shodan', 'AbuseIPDB', 'OTX', 'GreyNoise', 'ThreatFox', 'URLScan', '+7'].map(s => (
-              <span key={s} className="px-2 py-0.5 rounded-md text-[10px] font-mono text-white/65 border border-white/[0.08] bg-white/[0.02]">
+              <span key={s} className="px-2 py-0.5 rounded-md text-[11px] font-mono text-white/60 border border-white/[0.08] bg-white/[0.02]">
                 {s}
               </span>
             ))}
@@ -127,34 +133,33 @@ function CapabilityBento() {
           title="LLM synthesis"
           body="Raw signals get summarized into a verdict, key findings, and concrete next steps. Built for tickets and Slack threads, not dashboards."
           accent="cyan"
-          span="lg:col-span-3"
         />
 
         <CapabilityCard
           icon={Zap}
           title="Sub-7s scans"
           body="Async fan-out under the hood. Every lookup finishes in the time it takes to copy/paste an IP."
-          span="lg:col-span-2"
         />
 
+        {/* Row 2 */}
         <CapabilityCard
           icon={ShieldAlert}
           title="Severity vocabulary"
-          body="CRITICAL · HIGH · MEDIUM · LOW · CLEAN — calibrated for triage, mapped consistently across every source."
+          body="Five tiers calibrated for triage — mapped consistently across every source so you always speak the same language."
           accent="amber"
-          span="lg:col-span-2"
         >
-          <div className="mt-5 flex items-center gap-1">
+          <div className="mt-5 space-y-2">
             {[
-              { c: 'bg-red-500',     l: 'CRIT' },
-              { c: 'bg-orange-500',  l: 'HIGH' },
-              { c: 'bg-yellow-500',  l: 'MED'  },
-              { c: 'bg-blue-500',    l: 'LOW'  },
-              { c: 'bg-emerald-500', l: 'OK'   },
-            ].map(({ c, l }) => (
-              <div key={l} className="flex-1 flex flex-col gap-1">
-                <div className={`h-1.5 ${c} rounded-sm`} />
-                <span className="font-mono text-[9px] text-white/45 tracking-wider">{l}</span>
+              { c: 'bg-red-500',     dot: 'bg-red-500',     l: 'CRITICAL', desc: 'Immediate action required' },
+              { c: 'bg-orange-500',  dot: 'bg-orange-500',  l: 'HIGH',     desc: 'Investigate within hours'  },
+              { c: 'bg-yellow-400',  dot: 'bg-yellow-400',  l: 'MEDIUM',   desc: 'Schedule for review'       },
+              { c: 'bg-blue-400',    dot: 'bg-blue-400',    l: 'LOW',      desc: 'Monitor passively'         },
+              { c: 'bg-emerald-400', dot: 'bg-emerald-400', l: 'CLEAN',    desc: 'No action needed'          },
+            ].map(({ dot, l, desc }) => (
+              <div key={l} className="flex items-center gap-3">
+                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${dot}`} />
+                <span className="font-mono text-[11px] text-white/90 w-16 tracking-wide">{l}</span>
+                <span className="font-body text-[12px] text-white/45 leading-tight">{desc}</span>
               </div>
             ))}
           </div>
@@ -163,17 +168,46 @@ function CapabilityBento() {
         <CapabilityCard
           icon={Globe2}
           title="IOC coverage"
-          body="Domains · IPs · URLs · file hashes (MD5/SHA-1/SHA-256) · CVEs. One composer, every observable."
-          span="lg:col-span-2"
-        />
+          body="One composer handles every observable type — no separate tools, no format guessing."
+        >
+          <div className="mt-5 grid grid-cols-2 gap-2">
+            {[
+              { label: 'IP addresses',   eg: '8.8.8.8, 2001:db8::1' },
+              { label: 'Domains',        eg: 'evil.example.com'     },
+              { label: 'URLs',           eg: 'https://…/payload'    },
+              { label: 'File hashes',    eg: 'MD5 · SHA-1 · SHA-256'},
+              { label: 'CVEs',           eg: 'CVE-2024-XXXXX'       },
+              { label: 'Email headers',  eg: 'sender / reply-to'    },
+            ].map(({ label, eg }) => (
+              <div key={label} className="rounded-lg border border-white/[0.07] bg-white/[0.02] px-3 py-2.5">
+                <div className="font-display text-[12px] text-white/80 font-medium leading-tight">{label}</div>
+                <div className="font-mono text-[10px] text-white/35 mt-0.5 truncate">{eg}</div>
+              </div>
+            ))}
+          </div>
+        </CapabilityCard>
 
         <CapabilityCard
           icon={History}
           title="Local scan history"
           body="The last 10 targets stay one click away in the console. No accounts, no telemetry."
           accent="cyan"
-          span="lg:col-span-3"
-        />
+        >
+          <div className="mt-5 space-y-1.5">
+            {[
+              { target: '185.220.101.47',       verdict: 'CRITICAL', tone: 'text-red-400'     },
+              { target: 'malware.example.com',  verdict: 'HIGH',     tone: 'text-orange-400'  },
+              { target: 'd41d8cd98f00b204…',    verdict: 'CLEAN',    tone: 'text-emerald-400' },
+              { target: 'CVE-2024-21413',       verdict: 'HIGH',     tone: 'text-orange-400'  },
+              { target: '1.1.1.1',              verdict: 'CLEAN',    tone: 'text-emerald-400' },
+            ].map(({ target, verdict, tone }) => (
+              <div key={target} className="flex items-center justify-between rounded-lg border border-white/[0.06] bg-white/[0.015] px-3 py-2">
+                <span className="font-mono text-[11px] text-white/60 truncate max-w-[60%]">{target}</span>
+                <span className={`font-mono text-[10px] font-semibold tracking-wider ${tone}`}>{verdict}</span>
+              </div>
+            ))}
+          </div>
+        </CapabilityCard>
       </motion.div>
     </section>
   );
@@ -219,7 +253,7 @@ function HowItWorks() {
             variants={fadeUp}
             className="bg-sentinel-ink p-7 sm:p-8 relative group"
           >
-            <div className="display-tight text-white/[0.06] font-bold leading-none mb-6 select-none"
+            <div className="display-tight text-white font-bold leading-none mb-6 select-none"
                  style={{ fontSize: '88px', letterSpacing: '-0.06em' }}>
               {s.n}
             </div>
@@ -248,12 +282,12 @@ function HowItWorks() {
 
 const ExampleReport = forwardRef(function ExampleReport(props, ref) {
   return (
-    <section ref={ref} className="px-4 sm:px-6 lg:px-10 py-16 sm:py-24 border-t border-white/[0.05]">
+    <section ref={ref} id="sample-report" className="px-4 sm:px-6 lg:px-10 py-16 sm:py-24 border-t border-white/[0.05] scroll-mt-28 min-h-[100svh]">
       <SectionHeader
         eyebrow="Sample output"
         title="What lands in your"
-        italic="terminal."
-        sub="A real synthesized brief for a sample target. This is what every scan returns — verdict on top, source intelligence below, full agent report at the bottom."
+        italic="briefing."
+        sub={<>A real synthesized brief for a sample target.<br /><span className="whitespace-nowrap">This is what every scan returns: verdict on top, source intelligence below, full agent report at the bottom.</span></>}
       />
 
       <motion.div
@@ -375,9 +409,63 @@ const ExampleReport = forwardRef(function ExampleReport(props, ref) {
                 { s: 'otx',         v: '3 pulses',     tone: 'text-amber-300' },
                 { s: 'ipinfo',      v: 'NL · AS197540', tone: 'text-white/70' },
               ].map(r => (
-                <div key={r.s} className="flex items-center justify-between font-mono text-xs">
-                  <span className="text-white/55">{r.s}</span>
-                  <span className={r.tone}>{r.v}</span>
+                <div key={r.s} className="flex items-center justify-between text-xs">
+                  <span className="font-display text-white/60 tracking-tight">{r.s}</span>
+                  <span className={`font-mono ${r.tone}`}>{r.v}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Agent synthesis block */}
+        <div className="border-t border-white/[0.06] px-5 sm:px-7 py-5 sm:py-6">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-sentinel-purple-light/70">Agent synthesis</span>
+            <span className="h-px flex-1 bg-white/[0.06]" />
+            <span className="font-mono text-[10px] text-white/30">gpt-4o · 312 tokens</span>
+          </div>
+          <p className="font-body text-[13px] sm:text-sm text-sentinel-text-dim leading-relaxed">
+            <span className="text-white/80 font-medium">185.220.101.42</span> is a well-documented Tor exit node operated under AS197540 (Netcup GmbH, Netherlands). Cross-referencing AbuseIPDB, GreyNoise, and OTX confirms active participation in credential-stuffing campaigns and automated WordPress xmlrpc brute-force bursts over the last 14 days. Shodan reveals ports 80, 443, 9001, and 9030 open — consistent with a Tor relay/exit configuration. VirusTotal flags 11 of 88 engines on associated infrastructure. <span className="text-sentinel-amber/90">Recommend immediate perimeter block</span>, retroactive auth-log review for the past two weeks, and MFA enforcement on any account that authenticated from this address.
+          </p>
+        </div>
+
+        {/* Metadata strip */}
+        <div className="border-t border-white/[0.06] px-5 sm:px-7 py-5 grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div>
+            <div className="eyebrow mb-2">Open ports</div>
+            <div className="flex flex-wrap gap-1.5">
+              {['80/http', '443/https', '9001/tor', '9030/tor-dir'].map(p => (
+                <span key={p} className="font-mono text-[11px] text-amber-300/80 border border-amber-500/20 bg-amber-500/[0.04] rounded px-2 py-0.5">{p}</span>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="eyebrow mb-2">Geolocation</div>
+            <div className="space-y-1">
+              {[
+                { k: 'Country', v: 'Netherlands 🇳🇱' },
+                { k: 'ASN',     v: 'AS197540 · Netcup' },
+                { k: 'City',    v: 'Düsseldorf' },
+              ].map(({ k, v }) => (
+                <div key={k} className="flex justify-between text-xs">
+                  <span className="font-mono text-white/35">{k}</span>
+                  <span className="font-mono text-white/70">{v}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="eyebrow mb-2">Threat context</div>
+            <div className="space-y-1">
+              {[
+                { k: 'Classification', v: 'Tor exit node' },
+                { k: 'Last seen',      v: '2 hours ago' },
+                { k: 'OTX pulses',     v: '3 active' },
+              ].map(({ k, v }) => (
+                <div key={k} className="flex justify-between text-xs">
+                  <span className="font-mono text-white/35">{k}</span>
+                  <span className="font-mono text-white/70">{v}</span>
                 </div>
               ))}
             </div>

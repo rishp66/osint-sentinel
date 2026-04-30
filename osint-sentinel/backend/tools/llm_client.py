@@ -41,6 +41,7 @@ def _call_openai_compatible(
             ],
         }),
         timeout=timeout,
+        proxies={"http": None, "https": None},
     )
     resp.raise_for_status()
     return json.loads(resp.content)["choices"][0]["message"]["content"].strip()

@@ -116,7 +116,7 @@ export default function Hero({ onExampleCta, error, health }) {
   const apiKnown  = health !== null && health !== undefined;
 
   return (
-    <section className="relative pt-12 sm:pt-16 lg:pt-20 pb-16 lg:pb-24 px-4 sm:px-6 lg:px-10 overflow-hidden">
+    <section className="relative flex-1 flex flex-col justify-center pt-12 sm:pt-16 pb-16 lg:pb-20 px-4 sm:px-6 lg:px-10 overflow-hidden">
       {/* Particle network background */}
       <ParticleCanvas />
 
@@ -132,10 +132,10 @@ export default function Hero({ onExampleCta, error, health }) {
         aria-hidden="true"
       />
 
-      <div className="relative grid grid-cols-1 lg:grid-cols-12 gap-10 lg:gap-12 items-center" style={{ zIndex: 2 }}>
-        {/* ── Text column (7/12) ─────────────────────────── */}
+      <div className="relative grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-10 items-center max-w-[1280px] mx-auto w-full" style={{ zIndex: 2 }}>
+        {/* ── Text column (6/12) ─────────────────────────── */}
         <motion.div
-          className="lg:col-span-7 max-w-[720px]"
+          className="lg:col-span-6 max-w-[640px]"
           variants={container}
           initial="hidden"
           animate="show"
@@ -173,13 +173,21 @@ export default function Hero({ onExampleCta, error, health }) {
             <motion.span variants={item} className="block">OSINT</motion.span>
             <motion.span
               variants={item}
-              className="serif-italic block text-white/95"
-              style={{
-                marginLeft: '0.06em',
-                textShadow: '0 0 40px rgba(139,92,246,0.25)',
-              }}
+              className="serif-italic block"
+              style={{ marginLeft: '0.06em' }}
             >
-              Sentinel<span className="text-sentinel-purple">.</span>
+              <span
+                style={{
+                  background: 'linear-gradient(135deg, #ffffff 20%, #c4b5fd 55%, #a78bfa 80%, #7c3aed 100%)',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  backgroundClip: 'text',
+                  filter: 'drop-shadow(0 0 32px rgba(139,92,246,0.35))',
+                }}
+              >
+                Sentinel
+              </span>
+              <span className="text-sentinel-purple" style={{ WebkitTextFillColor: 'initial' }}>.</span>
             </motion.span>
           </h1>
 
@@ -216,14 +224,26 @@ export default function Hero({ onExampleCta, error, health }) {
 
           {/* CTA pair */}
           <motion.div variants={item} className="mt-9 sm:mt-10 flex flex-wrap items-center gap-3 sm:gap-4">
-            <Link
-              to="/console"
-              className="btn-primary focus-ring group inline-flex items-center gap-2.5 px-5 sm:px-6 h-[52px] rounded-xl text-white text-sm font-display font-semibold tracking-[-0.01em] no-underline"
-            >
-              <Terminal className="w-4 h-4 text-sentinel-purple-light" strokeWidth={2.25} />
-              Scan a target
-              <ArrowRight className="w-3.5 h-3.5 transition-transform duration-200 group-hover:translate-x-0.5" />
-            </Link>
+            <div className="relative group/cta">
+              {/* Outer glow halo */}
+              <div
+                className="absolute inset-0 -m-2 rounded-2xl pointer-events-none opacity-60 blur-xl transition-all duration-300 group-hover/cta:opacity-90 group-hover/cta:blur-2xl"
+                style={{ background: 'radial-gradient(ellipse, rgba(167,139,250,0.7), rgba(139,92,246,0.4) 60%, transparent 80%)' }}
+                aria-hidden="true"
+              />
+              <Link
+                to="/console"
+                className="relative z-10 focus-ring group inline-flex items-center gap-2.5 px-6 sm:px-7 h-[54px] rounded-xl text-white text-sm font-display font-bold tracking-[-0.01em] no-underline transition-all duration-200 hover:-translate-y-0.5"
+                style={{
+                  background: 'linear-gradient(135deg, #a78bfa 0%, #8b5cf6 40%, #7c3aed 100%)',
+                  boxShadow: '0 0 0 1px rgba(167,139,250,0.5), 0 6px 28px -4px rgba(139,92,246,0.75), 0 2px 8px rgba(139,92,246,0.4)',
+                }}
+              >
+                <Terminal className="w-4 h-4 text-white/90" strokeWidth={2.25} />
+                Launch Sentinel
+                <ArrowRight className="w-3.5 h-3.5 transition-transform duration-200 group-hover:translate-x-0.5" />
+              </Link>
+            </div>
 
             <button
               type="button"
@@ -260,9 +280,9 @@ export default function Hero({ onExampleCta, error, health }) {
           </motion.dl>
         </motion.div>
 
-        {/* ── Visual column (5/12): radar + live ticker stacked ──── */}
+        {/* ── Visual column (6/12): radar + live ticker stacked ──── */}
         <motion.div
-          className="hidden lg:flex lg:col-span-5 flex-col gap-6 items-center justify-center"
+          className="hidden lg:flex lg:col-span-6 flex-col gap-6 items-center justify-center"
           initial={{ opacity: 0, scale: 0.96 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.6, delay: 0.25, ease: [0.22, 1, 0.36, 1] }}

@@ -27,6 +27,7 @@ from tools.osint_sources import (
     query_urlhaus,
     query_malwarebazaar,
     query_pulsedive,
+    query_cve_mcp,
 )
 from tools.llm_client import synthesize
 from tools.agent_report import generate_report
@@ -194,6 +195,11 @@ def _trim_for_llm(sources: list[dict]) -> list[dict]:
         elif name == "circl_cve":
             s["references"] = s.get("references", [])[:5]
             s["vulnerable_products"] = s.get("vulnerable_products", [])[:10]
+        elif name == "cve_mcp":
+            if s.get("error"):
+                continue
+            if "summary" in s:
+                s["summary"] = s["summary"][:1500]
         trimmed.append(s)
     return trimmed
 
@@ -202,9 +208,10 @@ def _build_tasks(target: str, indicator_type: str) -> dict[str, Callable[[], dic
     """Map an indicator + its type to the OSINT source queries that apply."""
     tasks: dict[str, Callable[[], dict]] = {}
 
-    # ── CVE — only CIRCL applies ─────────────────────────────────────────
+    # ── CVE — CIRCL (always) + cve-mcp-server (when enabled) ────────────
     if indicator_type == "cve":
         tasks["circl_cve"] = lambda: query_circl_cve(target)
+        tasks["cve_mcp"]   = lambda: query_cve_mcp(target)
         return tasks
 
     # ── HASH — file-oriented sources only ────────────────────────────────

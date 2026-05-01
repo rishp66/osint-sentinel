@@ -27,6 +27,7 @@ You will receive enriched intelligence from up to 16 providers, grouped by funct
 
 **Vulnerability**
 - **CIRCL CVE** — CVE details, CVSS scores, vectors, and references (for CVE IDs)
+- **CVE MCP** (optional) — NVD CVSS + EPSS exploitation probability + CISA KEV membership + PoC availability, aggregated via cve-mcp-server; present only when the integration is enabled
 
 Not every source will apply to every indicator — the harness routes based on indicator type (ip, domain, url, hash, cve). A source returning `{"error": ...}` means it was unavailable; do not penalize the target for provider-side errors.
 

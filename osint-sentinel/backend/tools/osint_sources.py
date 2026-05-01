@@ -8,6 +8,7 @@ import socket
 import ipaddress
 from typing import Any
 from config.settings import get_settings
+from tools.cve_mcp_client import call_cve_mcp_tool
 
 
 # ─── Performance: shared HTTP session + tight timeouts ───────────────────
@@ -898,3 +899,30 @@ def query_pulsedive(target: str) -> dict:
         return {"source": "pulsedive", "error": str(e)}
 
 
+# ─── CVE MCP SERVER ──────────────────────────────────────────────────────────
+
+@_timed
+def query_cve_mcp(cve_id: str) -> dict:
+    """Enrich a CVE using cve-mcp-server via the get_cve_summary tool.
+
+    Single call that fetches NVD + EPSS concurrently and includes CISA KEV
+    status. Returns a pre-formatted summary string ready for LLM synthesis.
+    Returns {"error": "disabled"} when integration is off so _trim_for_llm
+    discards it cleanly without penalising the scan.
+    """
+    settings = get_settings()
+    if not settings.cve_mcp_enabled:
+        return {"source": "cve_mcp", "error": "disabled"}
+
+    out: dict = {"source": "cve_mcp", "cve_id": cve_id}
+
+    result = call_cve_mcp_tool("get_cve_summary", {"cve_id": cve_id})
+    if result["ok"]:
+        r = result["result"]
+        # Server returns a formatted string; client wraps it as {"text": "..."}
+        text = r.get("text", "") if isinstance(r, dict) else str(r)
+        out["summary"] = text[:2000]
+    else:
+        out["error"] = result["error"]
+
+    return out

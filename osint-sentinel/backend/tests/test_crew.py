@@ -31,7 +31,7 @@ _ALL_SOURCES = [
     "query_otx", "query_ipinfo", "query_dns",
     "query_greynoise", "query_urlscan", "query_hybrid_analysis", "query_rdap",
     "query_circl_cve", "query_threatfox", "query_urlhaus", "query_malwarebazaar",
-    "query_pulsedive",
+    "query_pulsedive", "query_cve_mcp",
 ]
 
 
@@ -150,9 +150,9 @@ class TestBuildTasks:
             "threatfox", "urlhaus", "pulsedive",
         }
 
-    def test_cve_builds_only_circl(self):
+    def test_cve_builds_circl_and_cve_mcp(self):
         tasks = _build_tasks("CVE-2021-44228", "cve")
-        assert set(tasks.keys()) == {"circl_cve"}
+        assert set(tasks.keys()) == {"circl_cve", "cve_mcp"}
 
 
 # ─── run_scan — integration-style tests with mocked sources ─────────────────
@@ -188,11 +188,31 @@ class TestRunScan:
         assert "malwarebazaar" in names
         assert result["indicator_type"] == "hash"
 
-    def test_cve_scan_fires_only_circl(self):
+    def test_cve_scan_fires_circl_and_cve_mcp(self):
         result, _ = _run_with_mocks("CVE-2021-44228")
         names = {s["source"] for s in result["sources"]}
-        assert names == {"circl_cve"}
+        assert "circl_cve" in names
+        assert "cve_mcp" in names
         assert result["indicator_type"] == "cve"
+
+    def test_cve_scan_disabled_mcp_still_returns_circl(self):
+        """When cve_mcp returns {"error": "disabled"} the scan still succeeds via CIRCL."""
+        patches = [
+            patch("agents.crew.query_circl_cve", return_value=_src("circl_cve")),
+            patch("agents.crew.query_cve_mcp",   return_value={"source": "cve_mcp", "error": "disabled"}),
+            patch("agents.crew.synthesize",       return_value=MOCK_SYNTH),
+            patch("agents.crew.generate_report",  return_value=MOCK_REPORT),
+        ]
+        for p in patches:
+            p.start()
+        try:
+            result = run_scan("CVE-2021-44228")
+        finally:
+            for p in patches:
+                p.stop()
+        names = {s["source"] for s in result["sources"]}
+        assert "circl_cve" in names
+        assert result["risk_score"] == MOCK_SYNTH["risk_score"]
 
     def test_url_scan_routes_to_url_sources(self):
         result, _ = _run_with_mocks("https://phish.example/login")

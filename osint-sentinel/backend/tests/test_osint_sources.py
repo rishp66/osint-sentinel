@@ -22,6 +22,7 @@ from tools.osint_sources import (
     query_urlhaus,
     query_malwarebazaar,
     query_pulsedive,
+    query_cve_mcp,
 )
 
 
@@ -849,3 +850,95 @@ class TestQueryPulsedive:
             with patch("tools.osint_sources._SESSION.get", return_value=resp):
                 r = query_pulsedive("clean.com")
         assert "note" in r
+
+
+# ─── query_cve_mcp ────────────────────────────────────────────────────────────
+
+def _settings_with_mcp(enabled: bool = True, **kwargs):
+    """Build a mock settings object with CVE MCP fields populated."""
+    m = _settings(**kwargs)
+    m.cve_mcp_enabled         = enabled
+    m.cve_mcp_command         = "python"
+    m.cve_mcp_args            = "-m cve_mcp.server"
+    m.cve_mcp_workdir         = ""
+    m.cve_mcp_timeout_seconds = 10
+    m.nvd_api_key             = _FakeSecretStr("")
+    m.cve_github_token        = _FakeSecretStr("")
+    return m
+
+
+class TestQueryCveMcp:
+    """Tests for query_cve_mcp — all cve_mcp_client calls are mocked."""
+
+    _CVE = "CVE-2021-44228"
+    _SUMMARY_TEXT = (
+        "=== CVE-2021-44228 Summary ===\n\n"
+        "SEVERITY: CRITICAL (10.0)\n"
+        "Vector: CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H\n\n"
+        "EXPLOIT RISK:\n"
+        "  EPSS Score:  97.53% probability of exploitation\n"
+        "  Percentile:  99.99th\n\n"
+        "CISA KEV: YES — added 2021-12-10 (Ransomware: Known)\n\n"
+        "Description:\nApache Log4j2 JNDI features used in configuration, log messages, "
+        "and parameters do not protect against attacker controlled LDAP and other JNDI "
+        "related endpoints.\n"
+    )
+
+    def test_disabled_returns_error_without_spawning(self):
+        with patch("tools.osint_sources.get_settings",
+                   return_value=_settings_with_mcp(enabled=False)):
+            with patch("tools.osint_sources.call_cve_mcp_tool") as mock_tool:
+                r = query_cve_mcp(self._CVE)
+        assert r["source"] == "cve_mcp"
+        assert r["error"] == "disabled"
+        mock_tool.assert_not_called()
+
+    def test_success_stores_summary_text(self):
+        """get_cve_summary returns a formatted string wrapped as {"text": ...}."""
+        mock_result = {"ok": True, "result": {"text": self._SUMMARY_TEXT}}
+        with patch("tools.osint_sources.get_settings",
+                   return_value=_settings_with_mcp(enabled=True)):
+            with patch("tools.osint_sources.call_cve_mcp_tool",
+                       return_value=mock_result) as mock_tool:
+                r = query_cve_mcp(self._CVE)
+        mock_tool.assert_called_once_with("get_cve_summary", {"cve_id": self._CVE})
+        assert r["source"] == "cve_mcp"
+        assert r["cve_id"] == self._CVE
+        assert "summary" in r
+        assert "CVE-2021-44228" in r["summary"]
+        assert "CRITICAL" in r["summary"]
+        assert "error" not in r
+
+    def test_summary_truncated_to_token_budget(self):
+        """Summaries longer than 2000 chars are truncated."""
+        long_text = "X" * 3000
+        mock_result = {"ok": True, "result": {"text": long_text}}
+        with patch("tools.osint_sources.get_settings",
+                   return_value=_settings_with_mcp(enabled=True)):
+            with patch("tools.osint_sources.call_cve_mcp_tool",
+                       return_value=mock_result):
+                r = query_cve_mcp(self._CVE)
+        assert len(r["summary"]) == 2000
+
+    def test_mcp_error_stored_in_result(self):
+        """When get_cve_summary fails, error is recorded and summary absent."""
+        mock_result = {"ok": False, "error": "NVD timeout after 15s"}
+        with patch("tools.osint_sources.get_settings",
+                   return_value=_settings_with_mcp(enabled=True)):
+            with patch("tools.osint_sources.call_cve_mcp_tool",
+                       return_value=mock_result):
+                r = query_cve_mcp(self._CVE)
+        assert r["source"] == "cve_mcp"
+        assert r["error"] == "NVD timeout after 15s"
+        assert "summary" not in r
+
+    def test_plain_string_result_also_handled(self):
+        """If client returns result as plain string (not {"text": ...}), still stored."""
+        mock_result = {"ok": True, "result": "=== CVE-2021-44228 ===\nSEVERITY: CRITICAL"}
+        with patch("tools.osint_sources.get_settings",
+                   return_value=_settings_with_mcp(enabled=True)):
+            with patch("tools.osint_sources.call_cve_mcp_tool",
+                       return_value=mock_result):
+                r = query_cve_mcp(self._CVE)
+        assert "summary" in r
+        assert "CRITICAL" in r["summary"]

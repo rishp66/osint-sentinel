@@ -26,6 +26,19 @@ class Settings(BaseSettings):
     abusech_auth_key: SecretStr = SecretStr("")          # Shared by ThreatFox + URLhaus + MalwareBazaar
     pulsedive_api_key: SecretStr = SecretStr("")
 
+    # ── CVE MCP Server integration ────────────────────────────────────────
+    # Set cve_mcp_enabled=true and point cve_mcp_workdir at your local
+    # clone of https://github.com/mukul975/cve-mcp-server.
+    # The server is invoked via stdio (no inbound port is opened).
+    cve_mcp_enabled: bool = False
+    cve_mcp_command: str = "python"
+    cve_mcp_args: str = "-m cve_mcp.server"       # space-separated extra args
+    cve_mcp_workdir: str = ""                       # abs path to cve-mcp-server repo
+    cve_mcp_timeout_seconds: int = 20               # per-tool call ceiling
+    # Optional API keys forwarded to the MCP sub-process
+    nvd_api_key: SecretStr = SecretStr("")          # 10× NVD rate limit
+    cve_github_token: SecretStr = SecretStr("")     # GitHub GHSA / PoC search
+
     debug: bool = False
 
     # ── Deployment: comma-separated list of allowed origins for the browser.

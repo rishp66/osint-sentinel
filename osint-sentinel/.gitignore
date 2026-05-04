@@ -59,3 +59,5 @@ desktop.ini
 *.log
 *.tmp
 CLAUDE.md
+doppler.yaml
+.doppler/

@@ -4,16 +4,21 @@ import pytest
 from unittest.mock import patch
 
 import agents.crew as crew
-from agents.crew import run_scan, _detect_type, _build_tasks
+from agents.crew import run_scan, _detect_type, _build_tasks, InvalidTargetError
 
 
 # ─── helpers ─────────────────────────────────────────────────────────────────
+
 
 def _src(name):
     return {"source": name, "_query_time_ms": 50.0}
 
 
-MOCK_SYNTH  = {"threat_brief": "Test threat brief.", "risk_score": 30, "risk_level": "MEDIUM"}
+MOCK_SYNTH = {
+    "threat_brief": "Test threat brief.",
+    "risk_score": 30,
+    "risk_level": "MEDIUM",
+}
 MOCK_REPORT = "### Endpoint Summary\nTest endpoint.\n### Threat Assessment\nLow risk."
 
 
@@ -27,11 +32,23 @@ def _clear_cache():
 
 # All source functions to mock in run_scan tests
 _ALL_SOURCES = [
-    "query_whois", "query_virustotal", "query_abuseipdb", "query_shodan",
-    "query_otx", "query_ipinfo", "query_dns",
-    "query_greynoise", "query_urlscan", "query_hybrid_analysis", "query_rdap",
-    "query_circl_cve", "query_threatfox", "query_urlhaus", "query_malwarebazaar",
-    "query_pulsedive", "query_cve_mcp",
+    "query_whois",
+    "query_virustotal",
+    "query_abuseipdb",
+    "query_shodan",
+    "query_otx",
+    "query_ipinfo",
+    "query_dns",
+    "query_greynoise",
+    "query_urlscan",
+    "query_hybrid_analysis",
+    "query_rdap",
+    "query_circl_cve",
+    "query_threatfox",
+    "query_urlhaus",
+    "query_malwarebazaar",
+    "query_pulsedive",
+    "query_cve_mcp",
 ]
 
 
@@ -57,6 +74,7 @@ def _run_with_mocks(target):
 
 
 # ─── _detect_type ────────────────────────────────────────────────────────────
+
 
 class TestDetectType:
     def test_ipv4(self):
@@ -98,16 +116,25 @@ class TestDetectType:
 
 # ─── _build_tasks ────────────────────────────────────────────────────────────
 
+
 class TestBuildTasks:
     def test_ip_builds_ip_oriented_sources(self):
         with patch("agents.crew._resolve", return_value="8.8.8.8"):
             tasks = _build_tasks("8.8.8.8", "ip")
         names = set(tasks.keys())
         # Existing host-based sources
-        assert {"virustotal", "abuseipdb", "shodan", "otx", "ipinfo", "dns"}.issubset(names)
+        assert {"virustotal", "abuseipdb", "shodan", "otx", "ipinfo", "dns"}.issubset(
+            names
+        )
         # New IP sources
-        assert {"greynoise", "rdap", "urlscan", "threatfox", "urlhaus",
-                "pulsedive"}.issubset(names)
+        assert {
+            "greynoise",
+            "rdap",
+            "urlscan",
+            "threatfox",
+            "urlhaus",
+            "pulsedive",
+        }.issubset(names)
         # No WHOIS for IPs
         assert "whois" not in names
         # No file-oriented sources
@@ -146,8 +173,12 @@ class TestBuildTasks:
         tasks = _build_tasks("a" * 64, "hash")
         names = set(tasks.keys())
         assert names == {
-            "virustotal", "hybrid_analysis", "malwarebazaar",
-            "threatfox", "urlhaus", "pulsedive",
+            "virustotal",
+            "hybrid_analysis",
+            "malwarebazaar",
+            "threatfox",
+            "urlhaus",
+            "pulsedive",
         }
 
     def test_cve_builds_circl_and_cve_mcp(self):
@@ -156,6 +187,7 @@ class TestBuildTasks:
 
 
 # ─── run_scan — integration-style tests with mocked sources ─────────────────
+
 
 class TestRunScan:
     def test_domain_scan_returns_schema_shape(self):
@@ -171,9 +203,7 @@ class TestRunScan:
     def test_ip_scan_skips_whois(self):
         result, mocks = _run_with_mocks("8.8.8.8")
         # Find the query_whois mock — it should never have been called
-        whois_mock = next(m for m in mocks if m._mock_name == "query_whois"
-                          or "query_whois" in repr(m))
-        # Alternative: confirm no "whois" source appears
+        # Confirm no "whois" source appears
         assert "whois" not in {s["source"] for s in result["sources"]}
         assert result["indicator_type"] == "ip"
 
@@ -199,9 +229,12 @@ class TestRunScan:
         """When cve_mcp returns {"error": "disabled"} the scan still succeeds via CIRCL."""
         patches = [
             patch("agents.crew.query_circl_cve", return_value=_src("circl_cve")),
-            patch("agents.crew.query_cve_mcp",   return_value={"source": "cve_mcp", "error": "disabled"}),
-            patch("agents.crew.synthesize",       return_value=MOCK_SYNTH),
-            patch("agents.crew.generate_report",  return_value=MOCK_REPORT),
+            patch(
+                "agents.crew.query_cve_mcp",
+                return_value={"source": "cve_mcp", "error": "disabled"},
+            ),
+            patch("agents.crew.synthesize", return_value=MOCK_SYNTH),
+            patch("agents.crew.generate_report", return_value=MOCK_REPORT),
         ]
         for p in patches:
             p.start()
@@ -226,14 +259,32 @@ class TestRunScan:
         # Replace query_ipinfo patch with one that raises
         for i, p in enumerate(patches):
             if "query_ipinfo" in str(p.attribute):
-                patches[i] = patch("agents.crew.query_ipinfo", side_effect=RuntimeError("ipinfo exploded"))
+                patches[i] = patch(
+                    "agents.crew.query_ipinfo",
+                    side_effect=RuntimeError("ipinfo exploded"),
+                )
                 break
-        started = [p.start() for p in patches]
+        for p in patches:
+            p.start()
         try:
             result = run_scan("example.com")
         finally:
             for p in patches:
                 p.stop()
         error_srcs = [s for s in result["sources"] if "error" in s]
-        assert any(s["source"] == "ipinfo" and "ipinfo exploded" in s["error"]
-                   for s in error_srcs)
+        assert any(
+            s["source"] == "ipinfo" and "ipinfo exploded" in s["error"]
+            for s in error_srcs
+        )
+
+
+class TestResolvedPrivateIPBlocked:
+    def test_domain_resolving_to_private_ip_rejected(self):
+        with patch("agents.crew._resolve", return_value="10.0.0.1"):
+            with pytest.raises(InvalidTargetError, match="private"):
+                run_scan("evil-public.example")
+
+    def test_url_host_resolving_to_private_rejected(self):
+        with patch("agents.crew._resolve", return_value="192.168.1.1"):
+            with pytest.raises(InvalidTargetError, match="private"):
+                run_scan("https://evil-public.example/path")

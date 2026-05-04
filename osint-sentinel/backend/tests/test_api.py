@@ -1,9 +1,9 @@
 """Integration tests for FastAPI endpoints — run_scan is mocked."""
 
-import pytest
 from unittest.mock import patch
 from fastapi.testclient import TestClient
 
+from config.settings import get_settings
 from main import app
 
 client = TestClient(app)
@@ -14,12 +14,12 @@ MOCK_RESULT = {
     "risk_level": "MEDIUM",
     "threat_brief": "No significant threat indicators found.",
     "sources": [
-        {"source": "whois",          "_query_time_ms": 100.0},
-        {"source": "virustotal",     "_query_time_ms": 200.0},
-        {"source": "abuseipdb",      "_query_time_ms": 150.0},
-        {"source": "shodan",         "_query_time_ms": 300.0},
+        {"source": "whois", "_query_time_ms": 100.0},
+        {"source": "virustotal", "_query_time_ms": 200.0},
+        {"source": "abuseipdb", "_query_time_ms": 150.0},
+        {"source": "shodan", "_query_time_ms": 300.0},
         {"source": "alienvault_otx", "_query_time_ms": 400.0},
-        {"source": "ipinfo",         "_query_time_ms": 120.0},
+        {"source": "ipinfo", "_query_time_ms": 120.0},
         {"source": "dns_resolution", "_query_time_ms": 10.0},
     ],
     "scan_duration_ms": 1234.5,
@@ -28,6 +28,7 @@ MOCK_RESULT = {
 
 
 # ─── /health ─────────────────────────────────────────────────────────────────
+
 
 class TestHealthEndpoint:
     def test_returns_200(self):
@@ -44,6 +45,7 @@ class TestHealthEndpoint:
 
 
 # ─── /scan ───────────────────────────────────────────────────────────────────
+
 
 class TestScanEndpoint:
     def test_success_returns_200(self):
@@ -101,3 +103,44 @@ class TestScanEndpoint:
     def test_get_method_not_allowed(self):
         response = client.get("/scan")
         assert response.status_code == 405
+
+    def test_api_key_missing_returns_401_when_configured(self, monkeypatch):
+        monkeypatch.setenv("API_KEY", "integration-test-secret")
+        get_settings.cache_clear()
+        try:
+            with patch("main.run_scan", return_value=MOCK_RESULT):
+                response = client.post("/scan", json={"target": "example.com"})
+            assert response.status_code == 401
+        finally:
+            monkeypatch.delenv("API_KEY", raising=False)
+            get_settings.cache_clear()
+
+    def test_api_key_header_allows_scan(self, monkeypatch):
+        monkeypatch.setenv("API_KEY", "integration-test-secret")
+        get_settings.cache_clear()
+        try:
+            with patch("main.run_scan", return_value=MOCK_RESULT):
+                response = client.post(
+                    "/scan",
+                    json={"target": "example.com"},
+                    headers={"X-API-Key": "integration-test-secret"},
+                )
+            assert response.status_code == 200
+        finally:
+            monkeypatch.delenv("API_KEY", raising=False)
+            get_settings.cache_clear()
+
+    def test_api_key_bearer_allows_scan(self, monkeypatch):
+        monkeypatch.setenv("API_KEY", "integration-test-secret")
+        get_settings.cache_clear()
+        try:
+            with patch("main.run_scan", return_value=MOCK_RESULT):
+                response = client.post(
+                    "/scan",
+                    json={"target": "example.com"},
+                    headers={"Authorization": "Bearer integration-test-secret"},
+                )
+            assert response.status_code == 200
+        finally:
+            monkeypatch.delenv("API_KEY", raising=False)
+            get_settings.cache_clear()

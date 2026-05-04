@@ -12,15 +12,19 @@ from agents.definitions import AGENT_SYSTEM_PROMPT
 logger = logging.getLogger(__name__)
 
 
-def generate_report(target: str, sources: list[dict]) -> str:
+def generate_report(target: str, sources: list[dict], timeout: int = 40) -> str:
     """Call the LLM with the full analyst prompt and return a markdown report string."""
     user_content = (
         f"Target: {target}\n\n"
-        f"<source_data>\n{json.dumps(sources, default=str)}\n</source_data>"
+        "<source_data>\n"
+        f"{json.dumps(sources, default=str)}\n"
+        "</source_data>"
     )
 
     try:
-        raw = call_llm(AGENT_SYSTEM_PROMPT, user_content, max_tokens=1000)
+        raw = call_llm(
+            AGENT_SYSTEM_PROMPT, user_content, max_tokens=1000, timeout=timeout
+        )
         # Strip code fence if the model wraps its markdown output
         if raw.startswith("```"):
             raw = raw.split("```", 2)[1]

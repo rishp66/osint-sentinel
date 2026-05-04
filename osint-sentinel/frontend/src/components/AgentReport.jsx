@@ -60,6 +60,20 @@ const mdComponents = {
   ),
 };
 
+/** Block javascript:/data:/vbscript: URLs in model-produced markdown. */
+function safeMarkdownUrl(url) {
+  if (typeof url !== 'string') return url;
+  const u = url.trim().toLowerCase();
+  if (
+    u.startsWith('javascript:')
+    || u.startsWith('data:')
+    || u.startsWith('vbscript:')
+  ) {
+    return '';
+  }
+  return url;
+}
+
 export default function AgentReport({ report }) {
   const [expanded, setExpanded] = useState(true);
 
@@ -100,7 +114,11 @@ export default function AgentReport({ report }) {
       {/* Markdown body */}
       {expanded && (
         <div className="px-6 pb-6 border-t border-sentinel-purple/10">
-          <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            urlTransform={safeMarkdownUrl}
+            components={mdComponents}
+          >
             {report}
           </ReactMarkdown>
         </div>

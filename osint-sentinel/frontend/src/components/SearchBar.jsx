@@ -12,7 +12,7 @@ const IPV4_RE   = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\
 const IPV6_RE   = /^[0-9a-fA-F:]+$/;
 const DOMAIN_RE = /^(?=.{4,253}$)(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/;
 const HASH_RE   = /^[a-fA-F0-9]+$/;
-const CVE_RE    = /^CVE-\d{4}-\d{4,}$/i;
+const CVE_RE    = /^CVE-\d{4}-\d{4,7}$/;
 
 function validateClientSide(raw) {
   const t = raw.trim();

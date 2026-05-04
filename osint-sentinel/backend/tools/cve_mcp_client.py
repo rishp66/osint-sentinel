@@ -21,17 +21,52 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import subprocess
 import threading
 import time
 from typing import Any
 
-from config.settings import get_settings
+from config.settings import get_settings, get_subprocess_base_env
 
 _CVE_RE = re.compile(r"^CVE-\d{4}-\d{4,}$", re.IGNORECASE)
+_MCP_SHELL_METACHARS = re.compile(r"[;&|`$<>\n\r]")
+
+
+def _mcp_spawn_argv(command: str, args_str: str) -> tuple[str | None, list[str]]:
+    """Validate MCP launcher config; return (error_message, argv) on success error is None."""
+    cmd = (command or "").strip() or "python"
+    if _MCP_SHELL_METACHARS.search(cmd):
+        return "CVE_MCP_COMMAND contains disallowed shell metacharacters", []
+    base = os.path.basename(cmd)
+    if base not in ("python", "python3"):
+        return (
+            "CVE_MCP_COMMAND must be a bare `python` or `python3` executable name "
+            f"(or a path whose basename is one of those), not {base!r}",
+            [],
+        )
+    raw = (args_str or "").strip()
+    if raw and _MCP_SHELL_METACHARS.search(raw):
+        return "CVE_MCP_ARGS contains disallowed shell metacharacters", []
+    try:
+        argv = shlex.split(raw) if raw else ["-m", "cve_mcp.server"]
+    except ValueError:
+        return "CVE_MCP_ARGS could not be parsed (check quoting)", []
+    if len(argv) != 2 or argv[0] != "-m":
+        return (
+            "CVE_MCP_ARGS must be exactly `-m dotted.module.name` with no extra flags",
+            [],
+        )
+    if not re.match(r"^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*$", argv[1]):
+        return (
+            "CVE_MCP_ARGS module segment must contain only letters, digits, dots, underscore",
+            [],
+        )
+    return None, [cmd] + argv
 
 
 # ─── Internal helpers ─────────────────────────────────────────────────────────
+
 
 def _build_env() -> dict[str, str]:
     """Return an environment dict for the MCP child process.
@@ -40,13 +75,7 @@ def _build_env() -> dict[str, str]:
     the child connects directly (matching `_SESSION.trust_env = False` policy).
     """
     settings = get_settings()
-    env: dict[str, str] = {}
-
-    # Propagate PATH and Python-essential vars
-    for key in ("PATH", "HOME", "LANG", "LC_ALL", "PYTHONPATH", "VIRTUAL_ENV",
-                "PYTHONUTF8", "PYTHONIOENCODING"):
-        if key in os.environ:
-            env[key] = os.environ[key]
+    env: dict[str, str] = get_subprocess_base_env()
 
     # CVE-specific API keys
     nvd = settings.nvd_api_key.get_secret_value()
@@ -59,18 +88,18 @@ def _build_env() -> dict[str, str]:
 
     # Forward threat-intel keys that cve-mcp-server can also use
     for attr, var in (
-        ("virustotal_api_key",  "VIRUSTOTAL_KEY"),
-        ("abuseipdb_api_key",   "ABUSEIPDB_KEY"),
-        ("shodan_api_key",      "SHODAN_KEY"),
+        ("virustotal_api_key", "VIRUSTOTAL_KEY"),
+        ("abuseipdb_api_key", "ABUSEIPDB_KEY"),
+        ("shodan_api_key", "SHODAN_KEY"),
     ):
         val = getattr(settings, attr).get_secret_value()
         if val:
             env[var] = val
 
     # Explicitly suppress proxy env vars — never forward
-    env["HTTP_PROXY"]  = ""
+    env["HTTP_PROXY"] = ""
     env["HTTPS_PROXY"] = ""
-    env["http_proxy"]  = ""
+    env["http_proxy"] = ""
     env["https_proxy"] = ""
 
     return env
@@ -93,7 +122,6 @@ def _read_response(proc: "subprocess.Popen[bytes]", timeout: float) -> dict[str,
     Lines that look like log/banner output (don't start with '{') are skipped.
     """
     deadline = time.monotonic() + timeout
-    buf = b""
 
     # Use a background reader thread so we can honour the deadline without
     # blocking the calling thread indefinitely on a hung subprocess.
@@ -124,6 +152,7 @@ def _read_response(proc: "subprocess.Popen[bytes]", timeout: float) -> dict[str,
 
 # ─── Public interface ──────────────────────────────────────────────────────────
 
+
 def call_cve_mcp_tool(tool_name: str, arguments: dict[str, Any]) -> dict[str, Any]:
     """Spawn the cve-mcp-server, invoke one tool, return its result dict.
 
@@ -138,17 +167,23 @@ def call_cve_mcp_tool(tool_name: str, arguments: dict[str, Any]) -> dict[str, An
     settings = get_settings()
 
     if not settings.cve_mcp_enabled:
-        return {"ok": False, "error": "cve-mcp integration is disabled (CVE_MCP_ENABLED=false)"}
+        return {
+            "ok": False,
+            "error": "cve-mcp integration is disabled (CVE_MCP_ENABLED=false)",
+        }
 
     workdir = settings.cve_mcp_workdir.strip() or None
     if workdir:
         workdir = os.path.realpath(workdir)
         if not os.path.isdir(workdir):
-            return {"ok": False, "error": f"CVE_MCP_WORKDIR does not exist: {workdir!r}"}
+            return {
+                "ok": False,
+                "error": f"CVE_MCP_WORKDIR does not exist: {workdir!r}",
+            }
 
-    command = settings.cve_mcp_command.strip() or "python"
-    extra_args = settings.cve_mcp_args.strip().split() if settings.cve_mcp_args.strip() else ["-m", "cve_mcp.server"]
-    cmd = [command] + extra_args
+    spawn_err, cmd = _mcp_spawn_argv(settings.cve_mcp_command, settings.cve_mcp_args)
+    if spawn_err:
+        return {"ok": False, "error": spawn_err}
 
     timeout = float(settings.cve_mcp_timeout_seconds)
     env = _build_env()
@@ -166,11 +201,14 @@ def call_cve_mcp_tool(tool_name: str, arguments: dict[str, Any]) -> dict[str, An
         )
 
         # MCP initialize handshake
-        init_req = _rpc("initialize", {
-            "protocolVersion": "2024-11-05",
-            "capabilities": {},
-            "clientInfo": {"name": "osint-sentinel", "version": "0.1"},
-        })
+        init_req = _rpc(
+            "initialize",
+            {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {"name": "osint-sentinel", "version": "0.1"},
+            },
+        )
         proc.stdin.write((json.dumps(init_req) + "\n").encode())  # type: ignore[union-attr]
         proc.stdin.flush()  # type: ignore[union-attr]
         _read_response(proc, timeout=min(5.0, timeout))
@@ -189,7 +227,11 @@ def call_cve_mcp_tool(tool_name: str, arguments: dict[str, Any]) -> dict[str, An
 
         if "error" in response:
             rpc_err = response["error"]
-            msg = rpc_err.get("message", str(rpc_err)) if isinstance(rpc_err, dict) else str(rpc_err)
+            msg = (
+                rpc_err.get("message", str(rpc_err))
+                if isinstance(rpc_err, dict)
+                else str(rpc_err)
+            )
             return {"ok": False, "error": f"MCP tool error: {msg}"}
 
         content = response.get("result", {})
@@ -205,9 +247,12 @@ def call_cve_mcp_tool(tool_name: str, arguments: dict[str, Any]) -> dict[str, An
         return {"ok": True, "result": content}
 
     except TimeoutError:
-        return {"ok": False, "error": f"cve-mcp tool '{tool_name}' timed out after {timeout}s"}
+        return {
+            "ok": False,
+            "error": f"cve-mcp tool '{tool_name}' timed out after {timeout}s",
+        }
     except FileNotFoundError:
-        return {"ok": False, "error": f"cve-mcp command not found: {command!r}"}
+        return {"ok": False, "error": f"cve-mcp command not found: {cmd[0]!r}"}
     except Exception as exc:
         return {"ok": False, "error": f"cve-mcp unexpected error: {exc}"}
     finally:
@@ -218,5 +263,10 @@ def call_cve_mcp_tool(tool_name: str, arguments: dict[str, Any]) -> dict[str, An
                 pass
             try:
                 proc.terminate()
+                try:
+                    proc.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait()
             except Exception:
                 pass

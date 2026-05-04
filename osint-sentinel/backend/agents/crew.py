@@ -7,7 +7,11 @@ import socket
 import threading
 import urllib.parse
 from collections import OrderedDict
-from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeoutError
+from concurrent.futures import (
+    ThreadPoolExecutor,
+    as_completed,
+    TimeoutError as FuturesTimeoutError,
+)
 from typing import Callable
 
 from tools.osint_sources import (
@@ -29,8 +33,27 @@ from tools.osint_sources import (
     query_pulsedive,
     query_cve_mcp,
 )
-from tools.llm_client import synthesize
+from tools.llm_client import synthesize, score_to_level
 from tools.agent_report import generate_report
+from models.schemas import is_blocked_ip
+
+
+def _compute_raw_score(sources: list[dict]) -> int:
+    """Heuristic risk score from raw OSINT data when LLM synthesis is unavailable."""
+    score = 0
+    for s in sources:
+        if s.get("error"):
+            continue
+        malicious = s.get("malicious", 0)
+        if malicious:
+            score += min(malicious * 4, 40)
+        abuse = s.get("abuse_confidence_score", 0)
+        if abuse:
+            score = max(score, abuse // 2)
+        pulses = s.get("pulse_count", 0)
+        if pulses:
+            score += min(pulses * 2, 20)
+    return min(score, 100)
 
 
 # Bounded LRU cache: evicts the oldest entry once _CACHE_MAX is exceeded so a
@@ -38,8 +61,14 @@ from tools.agent_report import generate_report
 # enforce a TTL window before returning a cached result.
 _CACHE: "OrderedDict[str, tuple[float, dict]]" = OrderedDict()
 _CACHE_LOCK = threading.Lock()
-_CACHE_TTL = 300   # seconds — matches CACHE_TTL_SECONDS in .env
-_CACHE_MAX = 512   # hard ceiling on number of cached targets
+_CACHE_MAX = 512  # hard ceiling on number of cached targets
+
+
+def _get_cache_ttl() -> int:
+    from config.settings import get_settings
+
+    return get_settings().cache_ttl_seconds
+
 
 _HASH_RE = re.compile(r"^[a-fA-F0-9]+$")
 _CVE_RE = re.compile(r"^CVE-\d{4}-\d{4,}$", re.IGNORECASE)
@@ -112,7 +141,9 @@ def validate_target(target: str) -> str:
     if len(t) < 4:
         raise InvalidTargetError("Target is too short to be a valid domain or IP.")
     if "." not in t:
-        raise InvalidTargetError("Domain must contain at least one dot (e.g. example.com).")
+        raise InvalidTargetError(
+            "Domain must contain at least one dot (e.g. example.com)."
+        )
     if not _DOMAIN_RE.match(t):
         raise InvalidTargetError(
             "Target does not look like a valid domain, IP, URL, file hash, or CVE ID."
@@ -211,17 +242,17 @@ def _build_tasks(target: str, indicator_type: str) -> dict[str, Callable[[], dic
     # ── CVE — CIRCL (always) + cve-mcp-server (when enabled) ────────────
     if indicator_type == "cve":
         tasks["circl_cve"] = lambda: query_circl_cve(target)
-        tasks["cve_mcp"]   = lambda: query_cve_mcp(target)
+        tasks["cve_mcp"] = lambda: query_cve_mcp(target)
         return tasks
 
     # ── HASH — file-oriented sources only ────────────────────────────────
     if indicator_type == "hash":
-        tasks["virustotal"]      = lambda: query_virustotal(target, query_type="file")
+        tasks["virustotal"] = lambda: query_virustotal(target, query_type="file")
         tasks["hybrid_analysis"] = lambda: query_hybrid_analysis(target)
-        tasks["malwarebazaar"]   = lambda: query_malwarebazaar(target)
-        tasks["threatfox"]       = lambda: query_threatfox(target, query_type="hash")
-        tasks["urlhaus"]         = lambda: query_urlhaus(target, query_type="hash")
-        tasks["pulsedive"]       = lambda: query_pulsedive(target)
+        tasks["malwarebazaar"] = lambda: query_malwarebazaar(target)
+        tasks["threatfox"] = lambda: query_threatfox(target, query_type="hash")
+        tasks["urlhaus"] = lambda: query_urlhaus(target, query_type="hash")
+        tasks["pulsedive"] = lambda: query_pulsedive(target)
         return tasks
 
     # ── IP / DOMAIN / URL — derive host + resolved IP for host-based sources
@@ -236,24 +267,24 @@ def _build_tasks(target: str, indicator_type: str) -> dict[str, Callable[[], dic
 
     # Existing sources
     tasks["virustotal"] = lambda: query_virustotal(host, query_type=host_qtype)
-    tasks["otx"]        = lambda: query_otx(host, query_type=host_qtype)
-    tasks["abuseipdb"]  = lambda: query_abuseipdb(resolved_ip)
-    tasks["shodan"]     = lambda: query_shodan(resolved_ip)
-    tasks["ipinfo"]     = lambda: query_ipinfo(resolved_ip)
-    tasks["dns"]        = lambda: query_dns(host)
+    tasks["otx"] = lambda: query_otx(host, query_type=host_qtype)
+    tasks["abuseipdb"] = lambda: query_abuseipdb(resolved_ip)
+    tasks["shodan"] = lambda: query_shodan(resolved_ip)
+    tasks["ipinfo"] = lambda: query_ipinfo(resolved_ip)
+    tasks["dns"] = lambda: query_dns(host)
     if not host_is_ip:
         tasks["whois"] = lambda: query_whois(host)
 
     # New sources applicable to IP/domain/URL
-    tasks["urlscan"]     = lambda: query_urlscan(target, query_type=indicator_type)
-    tasks["threatfox"]   = lambda: query_threatfox(target, query_type=indicator_type)
-    tasks["urlhaus"]     = lambda: query_urlhaus(target, query_type=indicator_type)
-    tasks["pulsedive"]   = lambda: query_pulsedive(target)
+    tasks["urlscan"] = lambda: query_urlscan(target, query_type=indicator_type)
+    tasks["threatfox"] = lambda: query_threatfox(target, query_type=indicator_type)
+    tasks["urlhaus"] = lambda: query_urlhaus(target, query_type=indicator_type)
+    tasks["pulsedive"] = lambda: query_pulsedive(target)
 
     # IP-oriented sources — fire whenever we have a usable IP (direct or resolved)
     if _is_ip(resolved_ip):
         tasks["greynoise"] = lambda: query_greynoise(resolved_ip)
-        tasks["rdap"]      = lambda: query_rdap(resolved_ip)
+        tasks["rdap"] = lambda: query_rdap(resolved_ip)
 
     return tasks
 
@@ -264,18 +295,37 @@ def run_scan(target: str) -> dict:
     Raises InvalidTargetError on garbage input — caller should map to HTTP 422.
     """
     target = validate_target(target)
+    indicator_type = _detect_type(target)
+
+    # Reject domains / URL hosts whose DNS resolution maps to private or reserved space
+    # (literal IPs and URL hosts are already blocked in API validation).
+    if indicator_type == "url":
+        host = urllib.parse.urlparse(target).hostname or ""
+        if host and not _is_ip(host):
+            resolved = _resolve(host)
+            if _is_ip(resolved) and is_blocked_ip(resolved):
+                raise InvalidTargetError(
+                    "Resolved address for this URL is in a private or reserved range "
+                    "and cannot be scanned."
+                )
+    elif indicator_type == "domain":
+        resolved = _resolve(target)
+        if _is_ip(resolved) and is_blocked_ip(resolved):
+            raise InvalidTargetError(
+                "Resolved address for this domain is in a private or reserved range "
+                "and cannot be scanned."
+            )
 
     # ── Cache check ───────────────────────────────────────────────────────
     with _CACHE_LOCK:
         cached = _CACHE.get(target)
-        if cached and time.time() - cached[0] < _CACHE_TTL:
+        if cached and time.time() - cached[0] < _get_cache_ttl():
             _CACHE.move_to_end(target)
             return cached[1]
         if cached:
             # Stale entry — drop it so we don't keep a dead reference around.
             _CACHE.pop(target, None)
 
-    indicator_type = _detect_type(target)
     tasks = _build_tasks(target, indicator_type)
 
     t_start = time.time()
@@ -313,21 +363,27 @@ def run_scan(target: str) -> dict:
     # ── Trim before LLM — fewer tokens = faster inference ─────────────────
     llm_sources = _trim_for_llm(sources)
 
-    with ThreadPoolExecutor(max_workers=2) as llm_pool:
-        f_synth  = llm_pool.submit(synthesize,      target, llm_sources)
+    # Non-blocking shutdown mirrors the OSINT pool pattern — don't block on
+    # __exit__ waiting for slow LLM threads after timeouts have already fired.
+    llm_pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="llm")
+    try:
+        f_synth = llm_pool.submit(synthesize, target, llm_sources, 30)
         f_report = llm_pool.submit(generate_report, target, llm_sources)
         try:
             synthesis = f_synth.result(timeout=35)
         except Exception:
+            _fb_score = _compute_raw_score(sources)
             synthesis = {
-                "threat_brief": "LLM synthesis unavailable — intelligence data collected above.",
-                "risk_score": 0,
-                "risk_level": "UNKNOWN",
+                "threat_brief": "LLM synthesis unavailable — raw intelligence data collected above.",
+                "risk_score": _fb_score,
+                "risk_level": score_to_level(_fb_score),
             }
         try:
             agent_report = f_report.result(timeout=45)
         except Exception:
             agent_report = "_Agent report unavailable — LLM did not respond in time._"
+    finally:
+        llm_pool.shutdown(wait=False, cancel_futures=True)
 
     scan_duration_ms = round((time.time() - t_start) * 1000, 2)
 

@@ -1,25 +1,26 @@
 import asyncio
 import logging
+import secrets
 import threading
 import time
 from collections import OrderedDict
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from models.schemas import ScanRequest, ScanResponse
 from agents.crew import run_scan, InvalidTargetError
-from config.settings import get_settings
+from config.settings import Settings, get_settings
 
 logger = logging.getLogger("osint_sentinel")
 
 # ── In-memory rate limiter (per-IP, 10 req/min) ───────────────────────────
 # OrderedDict + cap prevents unbounded memory growth from one-off client IPs.
-_RATE_WINDOW = 60     # seconds
-_RATE_MAX = 10        # requests per window
+_RATE_WINDOW = 60  # seconds
+_RATE_MAX = 10  # requests per window
 _RATE_BUCKET_MAX = 4096  # ceiling on tracked client IPs
 _rate_hits: "OrderedDict[str, list[float]]" = OrderedDict()
 _rate_lock = threading.Lock()
@@ -64,6 +65,44 @@ def _is_rate_limited(ip: str) -> bool:
         return False
 
 
+def _cors_allow_origins(settings: Settings) -> list[str]:
+    """Never use wildcard origins — even in DEBUG — to avoid permissive CORS."""
+    configured = settings.cors_origin_list()
+    if configured:
+        return configured
+    if not settings.debug:
+        logger.warning(
+            "CORS_ORIGINS is not set and DEBUG=false. "
+            "No browser origins will be permitted. Set CORS_ORIGINS in production."
+        )
+        return []
+    return [
+        "http://127.0.0.1:5173",
+        "http://localhost:5173",
+        "http://127.0.0.1:4173",
+        "http://localhost:4173",
+    ]
+
+
+def require_api_key_if_configured(request: Request) -> None:
+    """When API_KEY is set in the environment, require Bearer or X-API-Key."""
+    settings = get_settings()
+    expected = settings.api_key.get_secret_value()
+    if not expected:
+        return
+    auth = request.headers.get("Authorization") or ""
+    x_key = request.headers.get("X-API-Key") or ""
+    token = ""
+    if auth.lower().startswith("bearer "):
+        token = auth[7:].strip()
+    elif x_key:
+        token = x_key.strip()
+    if not token or not secrets.compare_digest(token, expected):
+        client_ip = request.client.host if request.client else "unknown"
+        logger.warning("auth failure: ip=%s path=%s", client_ip, request.url.path)
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
+
+
 # ── Startup validation ─────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
@@ -104,26 +143,24 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="OSINT Sentinel", version="0.1.0", lifespan=lifespan)
+_settings_init = get_settings()
+app = FastAPI(
+    title="OSINT Sentinel",
+    version="0.1.0",
+    lifespan=lifespan,
+    docs_url="/docs" if _settings_init.debug else None,
+    redoc_url="/redoc" if _settings_init.debug else None,
+    openapi_url="/openapi.json" if _settings_init.debug else None,
+)
 
 # ── CORS ────────────────────────────────────────────────────────────────────
-# Resolution order:
-#   1. DEBUG=true  → wildcard (local-dev only).
-#   2. CORS_ORIGINS env var present → use that explicit list (production).
-#   3. Otherwise   → safe local-dev defaults so first-run still works.
-_settings = get_settings()
-_configured_origins = _settings.cors_origin_list()
-if _settings.debug:
-    _cors_origins = ["*"]
-elif _configured_origins:
-    _cors_origins = _configured_origins
-else:
-    _cors_origins = ["http://localhost:5173", "http://localhost:4173"]
+# DEBUG does not enable wildcard origins; use CORS_ORIGINS or local defaults.
+_cors_origins = _cors_allow_origins(_settings_init)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
     allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type"],
+    allow_headers=["Content-Type", "Authorization", "X-API-Key"],
 )
 
 
@@ -134,6 +171,29 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Strict-Transport-Security"] = (
+            "max-age=31536000; includeSubDomains"
+        )
+        response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+        # COEP: require-corp would break cross-origin asset loading; omit by default.
+        response.headers["Cross-Origin-Resource-Policy"] = "same-site"
+        response.headers["Permissions-Policy"] = (
+            "geolocation=(), microphone=(), camera=()"
+        )
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "connect-src 'self' https://www.virustotal.com https://api.abuseipdb.com "
+            "https://api.shodan.io https://otx.alienvault.com https://ipinfo.io "
+            "https://urlscan.io https://api.greynoise.io https://www.hybrid-analysis.com "
+            "https://threatfox-api.abuse.ch https://urlhaus-api.abuse.ch "
+            "https://mb-api.abuse.ch https://pulsedive.com https://api.groq.com "
+            "https://lightning.ai; "
+            "script-src 'self'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; "
+            "font-src 'self'; "
+            "frame-ancestors 'none';"
+        )
         return response
 
 
@@ -143,16 +203,22 @@ app.add_middleware(SecurityHeadersMiddleware)
 # ── Routes ─────────────────────────────────────────────────────────────────
 @app.get("/", include_in_schema=False)
 def root():
-    return RedirectResponse(url="/docs")
+    if get_settings().debug:
+        return RedirectResponse(url="/docs")
+    return RedirectResponse(url="/health")
 
 
-@app.get("/health")
+@app.get("/health", include_in_schema=False)
 def health():
     return {"status": "ok"}
 
 
 @app.post("/scan", response_model=ScanResponse)
-async def scan(request: Request, req: ScanRequest):
+async def scan(
+    request: Request,
+    req: ScanRequest,
+    _auth: None = Depends(require_api_key_if_configured),
+):
     client_ip = _client_ip(request)
     if _is_rate_limited(client_ip):
         return JSONResponse(
@@ -166,10 +232,22 @@ async def scan(request: Request, req: ScanRequest):
         raise HTTPException(status_code=422, detail="Target must not be empty.")
     try:
         result = await asyncio.to_thread(run_scan, target)
+        logger.info(
+            "scan completed: ip=%s target=%s risk=%s score=%d duration_ms=%.0f",
+            client_ip,
+            target,
+            result["risk_level"],
+            result["risk_score"],
+            result["scan_duration_ms"],
+        )
         return Response(
             content=ScanResponse(**result).model_dump_json(),
             media_type="application/json",
-            headers={"Cache-Control": "no-store"},
+            headers={
+                "Cache-Control": "no-store, no-cache",
+                "Pragma": "no-cache",
+                "Expires": "0",
+            },
         )
     except InvalidTargetError as exc:
         raise HTTPException(status_code=422, detail=str(exc))

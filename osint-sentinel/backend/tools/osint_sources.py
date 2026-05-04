@@ -1,5 +1,6 @@
 """OSINT source query tools — each function hits one external API and returns structured data."""
 
+import logging
 import whois
 import requests
 from requests.adapters import HTTPAdapter
@@ -9,6 +10,35 @@ import ipaddress
 from typing import Any
 from config.settings import get_settings
 from tools.cve_mcp_client import call_cve_mcp_tool
+
+logger = logging.getLogger(__name__)
+
+
+def _http_error_msg(e: requests.HTTPError) -> str:
+    """Return a generic client-safe error message; log real status internally.
+
+    Do NOT log the request URL — Shodan/IPinfo/Pulsedive carry their API key
+    in the query string. Logging the host alone keeps the signal without leak.
+    """
+    code = e.response.status_code if e.response is not None else 0
+    host = ""
+    try:
+        if e.request is not None and e.request.url:
+            from urllib.parse import urlparse
+
+            host = urlparse(e.request.url).hostname or ""
+    except Exception:
+        host = ""
+    logger.warning("upstream HTTP error: status=%d host=%s", code, host)
+    if code == 401:
+        return "Authentication failed"
+    if code == 403:
+        return "Access denied"
+    if code == 404:
+        return "Not found"
+    if code == 429:
+        return "Rate limited"
+    return "Upstream error"
 
 
 # ─── Performance: shared HTTP session + tight timeouts ───────────────────
@@ -25,8 +55,8 @@ _SESSION.mount("http://", _adapter)
 # Per-API connect/read timeout. The crew has its own 18 s global ceiling, so
 # individual sources should fail fast and not eat the whole budget.
 _TIMEOUT = 8
-_OTX_TIMEOUT = 6        # OTX makes 3 sub-calls in parallel — keep each tight
-_HYBRID_TIMEOUT = 12    # Hybrid Analysis is consistently slow
+_OTX_TIMEOUT = 6  # OTX makes 3 sub-calls in parallel — keep each tight
+_HYBRID_TIMEOUT = 12  # Hybrid Analysis is consistently slow
 
 
 def _resolve_to_ip(target: str) -> str:
@@ -35,11 +65,20 @@ def _resolve_to_ip(target: str) -> str:
         ipaddress.ip_address(target)
         return target
     except ValueError:
-        return socket.gethostbyname(target)
+        old_timeout = socket.getdefaulttimeout()
+        socket.setdefaulttimeout(3)
+        try:
+            return socket.gethostbyname(target)
+        except socket.gaierror as exc:
+            logger.debug("DNS gaierror for %s: %s", target, exc)
+            raise ValueError(f"DNS resolution failed for {target!r}") from exc
+        finally:
+            socket.setdefaulttimeout(old_timeout)
 
 
 def _timed(func):
     """Decorator to measure query time in ms."""
+
     def wrapper(*args, **kwargs):
         start = time.time()
         result = func(*args, **kwargs)
@@ -47,10 +86,12 @@ def _timed(func):
         if isinstance(result, dict):
             result["_query_time_ms"] = elapsed
         return result
+
     return wrapper
 
 
 # ─── WHOIS ───────────────────────────────────────────────────────────────
+
 
 @_timed
 def query_whois(target: str) -> dict:
@@ -87,6 +128,7 @@ def query_whois(target: str) -> dict:
 
 # ─── VIRUSTOTAL ──────────────────────────────────────────────────────────
 
+
 @_timed
 def query_virustotal(target: str, query_type: str = "domain") -> dict:
     """Query VirusTotal API v3 for domain/IP/URL reports."""
@@ -103,6 +145,7 @@ def query_virustotal(target: str, query_type: str = "domain") -> dict:
             url = f"{base}/ip_addresses/{target}"
         elif query_type == "url":
             import base64 as b64
+
             url_id = b64.urlsafe_b64encode(target.encode()).decode().strip("=")
             url = f"{base}/urls/{url_id}"
         elif query_type in ("file", "hash"):
@@ -142,17 +185,20 @@ def query_virustotal(target: str, query_type: str = "domain") -> dict:
             result["sha256"] = attrs.get("sha256")
             result["names"] = attrs.get("names", [])[:5]
             result["signature_info"] = attrs.get("signature_info", {})
-            result["popular_threat_classification"] = attrs.get("popular_threat_classification", {})
+            result["popular_threat_classification"] = attrs.get(
+                "popular_threat_classification", {}
+            )
 
         return result
 
     except requests.HTTPError as e:
-        return {"source": "virustotal", "error": f"HTTP {e.response.status_code}: {e.response.text[:200]}"}
+        return {"source": "virustotal", "error": _http_error_msg(e)}
     except Exception as e:
         return {"source": "virustotal", "error": str(e)}
 
 
 # ─── ABUSEIPDB ───────────────────────────────────────────────────────────
+
 
 @_timed
 def query_abuseipdb(target: str) -> dict:
@@ -204,6 +250,7 @@ def query_abuseipdb(target: str) -> dict:
 
 # ─── SHODAN ──────────────────────────────────────────────────────────────
 
+
 @_timed
 def query_shodan(target: str) -> dict:
     """Query Shodan for host information (open ports, services, vulns)."""
@@ -226,14 +273,16 @@ def query_shodan(target: str) -> dict:
 
         services = []
         for item in data.get("data", [])[:10]:
-            services.append({
-                "port": item.get("port"),
-                "transport": item.get("transport"),
-                "product": item.get("product", "unknown"),
-                "version": item.get("version"),
-                "banner": (item.get("data", "") or "")[:200],
-                "cpe": item.get("cpe", []),
-            })
+            services.append(
+                {
+                    "port": item.get("port"),
+                    "transport": item.get("transport"),
+                    "product": item.get("product", "unknown"),
+                    "version": item.get("version"),
+                    "banner": (item.get("data", "") or "")[:200],
+                    "cpe": item.get("cpe", []),
+                }
+            )
 
         return {
             "source": "shodan",
@@ -251,14 +300,19 @@ def query_shodan(target: str) -> dict:
             "last_update": data.get("last_update"),
         }
     except requests.HTTPError as e:
-        if e.response.status_code == 404:
-            return {"source": "shodan", "data": {}, "note": "No Shodan data for this host"}
-        return {"source": "shodan", "error": f"HTTP {e.response.status_code}"}
+        if e.response is not None and e.response.status_code == 404:
+            return {
+                "source": "shodan",
+                "data": {},
+                "note": "No Shodan data for this host",
+            }
+        return {"source": "shodan", "error": _http_error_msg(e)}
     except Exception as e:
         return {"source": "shodan", "error": str(e)}
 
 
 # ─── ALIENVAULT OTX ──────────────────────────────────────────────────────
+
 
 @_timed
 def query_otx(target: str, query_type: str = "domain") -> dict:
@@ -286,11 +340,12 @@ def query_otx(target: str, query_type: str = "domain") -> dict:
 
     try:
         from concurrent.futures import ThreadPoolExecutor
+
         with ThreadPoolExecutor(max_workers=3) as pool:
             f_general = pool.submit(_get, "general")
-            f_dns     = pool.submit(_get, "passive_dns")
-            f_mal     = pool.submit(_get, "malware")
-            general  = f_general.result()
+            f_dns = pool.submit(_get, "passive_dns")
+            f_mal = pool.submit(_get, "malware")
+            general = f_general.result()
             dns_data = f_dns.result()
             mal_data = f_mal.result()
 
@@ -337,6 +392,7 @@ def query_otx(target: str, query_type: str = "domain") -> dict:
 
 # ─── IPINFO ──────────────────────────────────────────────────────────────
 
+
 @_timed
 def query_ipinfo(target: str) -> dict:
     """Query IPinfo for geolocation, ASN, and org data."""
@@ -379,10 +435,12 @@ def query_ipinfo(target: str) -> dict:
 
 # ─── DNS RESOLUTION (bonus utility) ─────────────────────────────────────
 
+
 @_timed
 def query_dns(target: str) -> dict:
     """Basic DNS resolution as a supplementary data source."""
     import socket
+
     try:
         results = socket.getaddrinfo(target, None)
         ips = list(set(r[4][0] for r in results))
@@ -396,6 +454,7 @@ def query_dns(target: str) -> dict:
 
 
 # ─── GREYNOISE COMMUNITY ─────────────────────────────────────────────────
+
 
 @_timed
 def query_greynoise(target: str) -> dict:
@@ -432,12 +491,13 @@ def query_greynoise(target: str) -> dict:
             "message": data.get("message"),
         }
     except requests.HTTPError as e:
-        return {"source": "greynoise", "error": f"HTTP {e.response.status_code}"}
+        return {"source": "greynoise", "error": _http_error_msg(e)}
     except Exception as e:
         return {"source": "greynoise", "error": str(e)}
 
 
 # ─── URLSCAN.IO ──────────────────────────────────────────────────────────
+
 
 @_timed
 def query_urlscan(target: str, query_type: str = "domain") -> dict:
@@ -478,17 +538,19 @@ def query_urlscan(target: str, query_type: str = "domain") -> dict:
             task = r.get("task", {}) or {}
             page = r.get("page", {}) or {}
             verdicts = (r.get("verdicts", {}) or {}).get("overall", {}) or {}
-            normalized.append({
-                "time": task.get("time"),
-                "task_url": task.get("url"),
-                "domain": page.get("domain"),
-                "ip": page.get("ip"),
-                "server": page.get("server"),
-                "malicious": verdicts.get("malicious"),
-                "score": verdicts.get("score"),
-                "result_url": r.get("result"),
-                "screenshot": r.get("screenshot"),
-            })
+            normalized.append(
+                {
+                    "time": task.get("time"),
+                    "task_url": task.get("url"),
+                    "domain": page.get("domain"),
+                    "ip": page.get("ip"),
+                    "server": page.get("server"),
+                    "malicious": verdicts.get("malicious"),
+                    "score": verdicts.get("score"),
+                    "result_url": r.get("result"),
+                    "screenshot": r.get("screenshot"),
+                }
+            )
 
         return {
             "source": "urlscan",
@@ -496,12 +558,13 @@ def query_urlscan(target: str, query_type: str = "domain") -> dict:
             "results": normalized,
         }
     except requests.HTTPError as e:
-        return {"source": "urlscan", "error": f"HTTP {e.response.status_code}: {e.response.text[:200]}"}
+        return {"source": "urlscan", "error": _http_error_msg(e)}
     except Exception as e:
         return {"source": "urlscan", "error": str(e)}
 
 
 # ─── HYBRID ANALYSIS (hash-lookup only) ──────────────────────────────────
+
 
 @_timed
 def query_hybrid_analysis(hash_value: str) -> dict:
@@ -527,21 +590,26 @@ def query_hybrid_analysis(hash_value: str) -> dict:
         data = resp.json()
 
         if not data:
-            return {"source": "hybrid_analysis", "note": "Hash not found in Hybrid Analysis"}
+            return {
+                "source": "hybrid_analysis",
+                "note": "Hash not found in Hybrid Analysis",
+            }
 
         normalized = []
         for item in data[:3]:
-            normalized.append({
-                "sha256": item.get("sha256"),
-                "verdict": item.get("verdict"),
-                "threat_score": item.get("threat_score"),
-                "vx_family": item.get("vx_family"),
-                "type_short": item.get("type_short"),
-                "av_detect": item.get("av_detect"),
-                "analysis_start_time": item.get("analysis_start_time"),
-                "domains": (item.get("domains") or [])[:10],
-                "hosts": (item.get("hosts") or [])[:10],
-            })
+            normalized.append(
+                {
+                    "sha256": item.get("sha256"),
+                    "verdict": item.get("verdict"),
+                    "threat_score": item.get("threat_score"),
+                    "vx_family": item.get("vx_family"),
+                    "type_short": item.get("type_short"),
+                    "av_detect": item.get("av_detect"),
+                    "analysis_start_time": item.get("analysis_start_time"),
+                    "domains": (item.get("domains") or [])[:10],
+                    "hosts": (item.get("hosts") or [])[:10],
+                }
+            )
 
         return {
             "source": "hybrid_analysis",
@@ -549,12 +617,13 @@ def query_hybrid_analysis(hash_value: str) -> dict:
             "results": normalized,
         }
     except requests.HTTPError as e:
-        return {"source": "hybrid_analysis", "error": f"HTTP {e.response.status_code}"}
+        return {"source": "hybrid_analysis", "error": _http_error_msg(e)}
     except Exception as e:
         return {"source": "hybrid_analysis", "error": str(e)}
 
 
 # ─── RDAP (via ipwhois — handles all 5 RIRs) ─────────────────────────────
+
 
 @_timed
 def query_rdap(target: str) -> dict:
@@ -573,12 +642,14 @@ def query_rdap(target: str) -> dict:
             contact = obj_data.get("contact", {}) or {}
             emails = contact.get("email", []) or []
             abuse_emails = [e.get("value") for e in emails if e.get("value")]
-            entities.append({
-                "handle": handle,
-                "name": contact.get("name"),
-                "roles": obj_data.get("roles", []),
-                "emails": abuse_emails[:3],
-            })
+            entities.append(
+                {
+                    "handle": handle,
+                    "name": contact.get("name"),
+                    "roles": obj_data.get("roles", []),
+                    "emails": abuse_emails[:3],
+                }
+            )
 
         network = result.get("network", {}) or {}
         return {
@@ -600,6 +671,7 @@ def query_rdap(target: str) -> dict:
 
 
 # ─── CIRCL CVE / Vulnerability-Lookup ────────────────────────────────────
+
 
 @_timed
 def query_circl_cve(cve_id: str) -> dict:
@@ -629,12 +701,13 @@ def query_circl_cve(cve_id: str) -> dict:
             "vulnerable_products": (data.get("vulnerable_product") or [])[:20],
         }
     except requests.HTTPError as e:
-        return {"source": "circl_cve", "error": f"HTTP {e.response.status_code}"}
+        return {"source": "circl_cve", "error": _http_error_msg(e)}
     except Exception as e:
         return {"source": "circl_cve", "error": str(e)}
 
 
 # ─── THREATFOX (abuse.ch) ────────────────────────────────────────────────
+
 
 @_timed
 def query_threatfox(target: str, query_type: str = "domain") -> dict:
@@ -671,18 +744,20 @@ def query_threatfox(target: str, query_type: str = "domain") -> dict:
 
         matches = []
         for m in raw_matches[:5]:
-            matches.append({
-                "ioc": m.get("ioc"),
-                "ioc_type": m.get("ioc_type"),
-                "threat_type": m.get("threat_type"),
-                "malware": m.get("malware"),
-                "malware_alias": m.get("malware_alias"),
-                "confidence_level": m.get("confidence_level"),
-                "first_seen": m.get("first_seen"),
-                "last_seen": m.get("last_seen"),
-                "tags": (m.get("tags") or [])[:10],
-                "reference": m.get("reference"),
-            })
+            matches.append(
+                {
+                    "ioc": m.get("ioc"),
+                    "ioc_type": m.get("ioc_type"),
+                    "threat_type": m.get("threat_type"),
+                    "malware": m.get("malware"),
+                    "malware_alias": m.get("malware_alias"),
+                    "confidence_level": m.get("confidence_level"),
+                    "first_seen": m.get("first_seen"),
+                    "last_seen": m.get("last_seen"),
+                    "tags": (m.get("tags") or [])[:10],
+                    "reference": m.get("reference"),
+                }
+            )
 
         return {
             "source": "threatfox",
@@ -691,12 +766,13 @@ def query_threatfox(target: str, query_type: str = "domain") -> dict:
             "matches": matches,
         }
     except requests.HTTPError as e:
-        return {"source": "threatfox", "error": f"HTTP {e.response.status_code}"}
+        return {"source": "threatfox", "error": _http_error_msg(e)}
     except Exception as e:
         return {"source": "threatfox", "error": str(e)}
 
 
 # ─── URLHAUS (abuse.ch) ──────────────────────────────────────────────────
+
 
 @_timed
 def query_urlhaus(target: str, query_type: str = "domain") -> dict:
@@ -739,58 +815,67 @@ def query_urlhaus(target: str, query_type: str = "domain") -> dict:
         result: dict = {"source": "urlhaus", "query_status": status}
 
         if query_type == "url":
-            result.update({
-                "url_status": data.get("url_status"),
-                "threat": data.get("threat"),
-                "tags": (data.get("tags") or [])[:10],
-                "date_added": data.get("date_added"),
-                "last_online": data.get("last_online"),
-                "payloads": [
-                    {
-                        "filename": p.get("filename"),
-                        "file_type": p.get("file_type"),
-                        "signature": p.get("signature"),
-                        "sha256": p.get("response_sha256"),
-                    }
-                    for p in (data.get("payloads") or [])[:5]
-                ],
-            })
+            result.update(
+                {
+                    "url_status": data.get("url_status"),
+                    "threat": data.get("threat"),
+                    "tags": (data.get("tags") or [])[:10],
+                    "date_added": data.get("date_added"),
+                    "last_online": data.get("last_online"),
+                    "payloads": [
+                        {
+                            "filename": p.get("filename"),
+                            "file_type": p.get("file_type"),
+                            "signature": p.get("signature"),
+                            "sha256": p.get("response_sha256"),
+                        }
+                        for p in (data.get("payloads") or [])[:5]
+                    ],
+                }
+            )
         elif query_type == "hash":
-            result.update({
-                "file_type": data.get("file_type"),
-                "file_size": data.get("file_size"),
-                "signature": data.get("signature"),
-                "sha256_hash": data.get("sha256_hash"),
-                "md5_hash": data.get("md5_hash"),
-                "first_seen": data.get("first_seen"),
-                "url_count": data.get("url_count"),
-            })
+            result.update(
+                {
+                    "file_type": data.get("file_type"),
+                    "file_size": data.get("file_size"),
+                    "signature": data.get("signature"),
+                    "sha256_hash": data.get("sha256_hash"),
+                    "md5_hash": data.get("md5_hash"),
+                    "first_seen": data.get("first_seen"),
+                    "url_count": data.get("url_count"),
+                }
+            )
         else:
             urls_raw = data.get("urls") or []
-            result.update({
-                "urls_online": sum(1 for u in urls_raw if u.get("url_status") == "online"),
-                "url_count": len(urls_raw),
-                "urls": [
-                    {
-                        "url": u.get("url"),
-                        "url_status": u.get("url_status"),
-                        "threat": u.get("threat"),
-                        "tags": (u.get("tags") or [])[:5],
-                        "date_added": u.get("date_added"),
-                    }
-                    for u in urls_raw[:5]
-                ],
-                "blacklists": data.get("blacklists", {}),
-            })
+            result.update(
+                {
+                    "urls_online": sum(
+                        1 for u in urls_raw if u.get("url_status") == "online"
+                    ),
+                    "url_count": len(urls_raw),
+                    "urls": [
+                        {
+                            "url": u.get("url"),
+                            "url_status": u.get("url_status"),
+                            "threat": u.get("threat"),
+                            "tags": (u.get("tags") or [])[:5],
+                            "date_added": u.get("date_added"),
+                        }
+                        for u in urls_raw[:5]
+                    ],
+                    "blacklists": data.get("blacklists", {}),
+                }
+            )
 
         return result
     except requests.HTTPError as e:
-        return {"source": "urlhaus", "error": f"HTTP {e.response.status_code}"}
+        return {"source": "urlhaus", "error": _http_error_msg(e)}
     except Exception as e:
         return {"source": "urlhaus", "error": str(e)}
 
 
 # ─── MALWAREBAZAAR (abuse.ch) ────────────────────────────────────────────
+
 
 @_timed
 def query_malwarebazaar(hash_value: str) -> dict:
@@ -821,21 +906,23 @@ def query_malwarebazaar(hash_value: str) -> dict:
         samples = []
         for s in (data.get("data") or [])[:3]:
             intel = s.get("intelligence", {}) or {}
-            samples.append({
-                "sha256_hash": s.get("sha256_hash"),
-                "md5_hash": s.get("md5_hash"),
-                "sha1_hash": s.get("sha1_hash"),
-                "file_type": s.get("file_type"),
-                "file_size": s.get("file_size"),
-                "signature": s.get("signature"),
-                "tags": (s.get("tags") or [])[:10],
-                "first_seen": s.get("first_seen"),
-                "last_seen": s.get("last_seen"),
-                "delivery_method": s.get("delivery_method"),
-                "origin_country": s.get("origin_country"),
-                "downloads": intel.get("downloads"),
-                "uploads": intel.get("uploads"),
-            })
+            samples.append(
+                {
+                    "sha256_hash": s.get("sha256_hash"),
+                    "md5_hash": s.get("md5_hash"),
+                    "sha1_hash": s.get("sha1_hash"),
+                    "file_type": s.get("file_type"),
+                    "file_size": s.get("file_size"),
+                    "signature": s.get("signature"),
+                    "tags": (s.get("tags") or [])[:10],
+                    "first_seen": s.get("first_seen"),
+                    "last_seen": s.get("last_seen"),
+                    "delivery_method": s.get("delivery_method"),
+                    "origin_country": s.get("origin_country"),
+                    "downloads": intel.get("downloads"),
+                    "uploads": intel.get("uploads"),
+                }
+            )
 
         return {
             "source": "malwarebazaar",
@@ -843,18 +930,21 @@ def query_malwarebazaar(hash_value: str) -> dict:
             "samples": samples,
         }
     except requests.HTTPError as e:
-        return {"source": "malwarebazaar", "error": f"HTTP {e.response.status_code}"}
+        return {"source": "malwarebazaar", "error": _http_error_msg(e)}
     except Exception as e:
         return {"source": "malwarebazaar", "error": str(e)}
 
 
 # ─── PULSEDIVE ───────────────────────────────────────────────────────────
 
+
 @_timed
 def query_pulsedive(target: str) -> dict:
     """Query Pulsedive for threat-intel enrichment on an IP, domain, URL, or hash."""
     settings = get_settings()
-    api_key = settings.pulsedive_api_key.get_secret_value()  # optional — higher rate limits with key
+    api_key = (
+        settings.pulsedive_api_key.get_secret_value()
+    )  # optional — higher rate limits with key
 
     params: dict = {"indicator": target, "pretty": "0"}
     if api_key:
@@ -883,7 +973,11 @@ def query_pulsedive(target: str) -> dict:
             "risk_recommended": data.get("risk_recommended"),
             "summary": data.get("summary", {}),
             "threats": [
-                {"name": t.get("name"), "category": t.get("category"), "risk": t.get("risk")}
+                {
+                    "name": t.get("name"),
+                    "category": t.get("category"),
+                    "risk": t.get("risk"),
+                }
                 for t in (data.get("threats") or [])[:5]
             ],
             "feeds": [
@@ -894,12 +988,13 @@ def query_pulsedive(target: str) -> dict:
             "protocols": (attributes.get("protocol") or [])[:10],
         }
     except requests.HTTPError as e:
-        return {"source": "pulsedive", "error": f"HTTP {e.response.status_code}"}
+        return {"source": "pulsedive", "error": _http_error_msg(e)}
     except Exception as e:
         return {"source": "pulsedive", "error": str(e)}
 
 
 # ─── CVE MCP SERVER ──────────────────────────────────────────────────────────
+
 
 @_timed
 def query_cve_mcp(cve_id: str) -> dict:

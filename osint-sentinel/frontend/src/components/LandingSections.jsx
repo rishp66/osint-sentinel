@@ -117,7 +117,7 @@ function CapabilityBento() {
         <CapabilityCard
           icon={Network}
           title="Parallel multi-source"
-          body="14 OSINT integrations queried simultaneously — VirusTotal, AbuseIPDB, Shodan, OTX, GreyNoise, ThreatFox, URLScan, and more — fanned out per scan."
+          body="14 OSINT integrations queried simultaneously: VirusTotal, AbuseIPDB, Shodan, OTX, GreyNoise, ThreatFox, URLScan, and more...."
         >
           <div className="mt-5 flex flex-wrap gap-1.5">
             {['VirusTotal', 'Shodan', 'AbuseIPDB', 'OTX', 'GreyNoise', 'ThreatFox', 'URLScan', '+7'].map(s => (
@@ -145,7 +145,7 @@ function CapabilityBento() {
         <CapabilityCard
           icon={ShieldAlert}
           title="Severity vocabulary"
-          body="Five tiers calibrated for triage — mapped consistently across every source so you always speak the same language."
+          body="Five tiers calibrated for triage: mapped consistently across every source so you always speak the same language."
           accent="amber"
         >
           <div className="mt-5 space-y-2">
@@ -168,7 +168,7 @@ function CapabilityBento() {
         <CapabilityCard
           icon={Globe2}
           title="IOC coverage"
-          body="One composer handles every observable type — no separate tools, no format guessing."
+          body="One composer handles every observable type: no separate tools, no format guessing."
         >
           <div className="mt-5 grid grid-cols-2 gap-2">
             {[
@@ -223,7 +223,7 @@ function HowItWorks() {
     {
       icon: Workflow, n: '02',
       title: 'Parallel intelligence fan-out',
-      body: 'A multi-agent backend hits every relevant OSINT source concurrently — partial failures degrade gracefully, never block the scan.',
+      body: 'A multi-agent backend hits every relevant OSINT source concurrently: partial failures degrade gracefully, never block the scan.',
     },
     {
       icon: FileText, n: '03',
@@ -356,7 +356,7 @@ const ExampleReport = forwardRef(function ExampleReport(props, ref) {
                   {[
                     '11 of 88 AV engines flag IPs in this /24',
                     'Tor exit-node consensus, last seen 2h ago',
-                    '47 abuse reports — abuseipdb confidence 100%',
+                    '47 abuse reports: abuseipdb confidence 100%',
                   ].map((f, i) => (
                     <li key={i} className="flex gap-2 text-[13px] text-sentinel-text-dim leading-relaxed">
                       <span className="text-sentinel-amber mt-0.5">›</span>
@@ -426,7 +426,7 @@ const ExampleReport = forwardRef(function ExampleReport(props, ref) {
             <span className="font-mono text-[10px] text-white/30">gpt-4o · 312 tokens</span>
           </div>
           <p className="font-body text-[13px] sm:text-sm text-sentinel-text-dim leading-relaxed">
-            <span className="text-white/80 font-medium">185.220.101.42</span> is a well-documented Tor exit node operated under AS197540 (Netcup GmbH, Netherlands). Cross-referencing AbuseIPDB, GreyNoise, and OTX confirms active participation in credential-stuffing campaigns and automated WordPress xmlrpc brute-force bursts over the last 14 days. Shodan reveals ports 80, 443, 9001, and 9030 open — consistent with a Tor relay/exit configuration. VirusTotal flags 11 of 88 engines on associated infrastructure. <span className="text-sentinel-amber/90">Recommend immediate perimeter block</span>, retroactive auth-log review for the past two weeks, and MFA enforcement on any account that authenticated from this address.
+            <span className="text-white/80 font-medium">185.220.101.42</span> is a well-documented Tor exit node operated under AS197540 (Netcup GmbH, Netherlands). Cross-referencing AbuseIPDB, GreyNoise, and OTX confirms active participation in credential-stuffing campaigns and automated WordPress xmlrpc brute-force bursts over the last 14 days. Shodan reveals ports 80, 443, 9001, and 9030 open: consistent with a Tor relay/exit configuration. VirusTotal flags 11 of 88 engines on associated infrastructure. <span className="text-sentinel-amber/90">Recommend immediate perimeter block</span>, retroactive auth-log review for the past two weeks, and MFA enforcement on any account that authenticated from this address.
           </p>
         </div>
 

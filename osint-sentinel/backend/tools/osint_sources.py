@@ -327,11 +327,11 @@ def query_otx(target: str, query_type: str = "domain") -> dict:
     section = "IPv4" if query_type == "ip" else "domain"
     _timeout = _OTX_TIMEOUT
 
-    def _get(endpoint):
+    def _get(endpoint, hdrs=None):
         try:
             r = _SESSION.get(
                 f"{base}/indicators/{section}/{target}/{endpoint}",
-                headers=headers,
+                headers=hdrs if hdrs is not None else headers,
                 timeout=_timeout,
             )
             return r.json() if r.ok else {}
@@ -348,6 +348,17 @@ def query_otx(target: str, query_type: str = "domain") -> dict:
             general = f_general.result()
             dns_data = f_dns.result()
             mal_data = f_mal.result()
+
+        # Key rejected or stale — retry all three endpoints anonymously
+        if not general and api_key:
+            logger.warning("OTX key rejected or timed out; retrying anonymously")
+            with ThreadPoolExecutor(max_workers=3) as pool:
+                f_general = pool.submit(_get, "general", {})
+                f_dns = pool.submit(_get, "passive_dns", {})
+                f_mal = pool.submit(_get, "malware", {})
+                general = f_general.result()
+                dns_data = f_dns.result()
+                mal_data = f_mal.result()
 
         if not general:
             return {"source": "alienvault_otx", "error": "No response from OTX"}
@@ -956,6 +967,15 @@ def query_pulsedive(target: str) -> dict:
             params=params,
             timeout=_TIMEOUT,
         )
+        # Key rejected — retry anonymously (Pulsedive supports unauthenticated calls)
+        if resp.status_code == 401 and api_key:
+            logger.warning("Pulsedive API key rejected (401); retrying anonymously")
+            params.pop("key", None)
+            resp = _SESSION.get(
+                "https://pulsedive.com/api/info.php",
+                params=params,
+                timeout=_TIMEOUT,
+            )
         if resp.status_code == 404:
             return {"source": "pulsedive", "note": "Indicator not in Pulsedive"}
         resp.raise_for_status()

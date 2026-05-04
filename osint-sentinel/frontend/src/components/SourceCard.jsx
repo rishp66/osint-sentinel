@@ -16,20 +16,20 @@ const FAV = (domain) => `https://www.google.com/s2/favicons?domain=${domain}&sz=
 const SOURCE_META = {
   whois:           { label: 'WHOIS',           icon: Database,     accent: '#a78bfa', category: 'metadata',       logo: null },
   virustotal:      { label: 'VirusTotal',      icon: Bug,          accent: '#f97316', category: 'threat',         logo: FAV('virustotal.com') },
-  abuseipdb:       { label: 'AbuseIPDB',       icon: Shield,       accent: '#ef4444', category: 'threat',         logo: FAV('abuseipdb.com') },
+  abuseipdb:       { label: 'AbuseIPDB',       icon: Shield,       accent: '#ef4444', category: 'threat',         logo: '/logos/abuseipdb.svg' },
   shodan:          { label: 'Shodan',          icon: Radar,        accent: '#06b6d4', category: 'infrastructure',  logo: FAV('shodan.io') },
-  alienvault_otx:  { label: 'AlienVault OTX',  icon: Globe,        accent: '#22c55e', category: 'threat',         logo: FAV('otx.alienvault.com') },
-  ipinfo:          { label: 'IPinfo',          icon: MapPin,       accent: '#eab308', category: 'metadata',       logo: FAV('ipinfo.io') },
-  greynoise:       { label: 'GreyNoise',       icon: Radio,        accent: '#06b6d4', category: 'threat',         logo: FAV('greynoise.io') },
-  urlscan:         { label: 'urlscan.io',      icon: Search,       accent: '#3b82f6', category: 'threat',         logo: FAV('urlscan.io') },
+  alienvault_otx:  { label: 'AlienVault OTX',  icon: Globe,        accent: '#22c55e', category: 'threat',         logo: '/logos/otx-alienvault.svg' },
+  ipinfo:          { label: 'IPinfo',          icon: MapPin,       accent: '#eab308', category: 'metadata',       logo: '/logos/ipinfo.svg' },
+  greynoise:       { label: 'GreyNoise',       icon: Radio,        accent: '#06b6d4', category: 'threat',         logo: '/logos/greynoise.svg' },
+  urlscan:         { label: 'urlscan.io',      icon: Search,       accent: '#3b82f6', category: 'threat',         logo: '/logos/urlscan.svg' },
   hybrid_analysis: { label: 'Hybrid Analysis', icon: FlaskConical, accent: '#8b5cf6', category: 'threat',         logo: FAV('hybrid-analysis.com') },
   rdap:            { label: 'RDAP',            icon: Network,      accent: '#64748b', category: 'metadata',       logo: null },
   circl_cve:       { label: 'CIRCL CVE',       icon: AlertTriangle, accent: '#f59e0b', category: 'threat',        logo: FAV('circl.lu') },
-  threatfox:       { label: 'ThreatFox',       icon: Target,       accent: '#f43f5e', category: 'threat',         logo: FAV('threatfox.abuse.ch') },
-  malwarebazaar:   { label: 'MalwareBazaar',   icon: FileWarning,  accent: '#ea580c', category: 'threat',         logo: FAV('bazaar.abuse.ch') },
+  threatfox:       { label: 'ThreatFox',       icon: Target,       accent: '#f43f5e', category: 'threat',         logo: '/logos/threatfox.svg' },
+  malwarebazaar:   { label: 'MalwareBazaar',   icon: FileWarning,  accent: '#ea580c', category: 'threat',         logo: '/logos/malwarebazaar.svg' },
   pulsedive:       { label: 'Pulsedive',       icon: Activity,     accent: '#ec4899', category: 'threat',         logo: FAV('pulsedive.com') },
   dns_resolution:  { label: 'DNS Resolution',  icon: Globe2,       accent: '#94a3b8', category: 'infrastructure',  logo: null },
-  urlhaus:         { label: 'URLhaus',         icon: FileWarning,  accent: '#f97316', category: 'threat',         logo: FAV('urlhaus.abuse.ch') },
+  urlhaus:         { label: 'URLhaus',         icon: FileWarning,  accent: '#f97316', category: 'threat',         logo: '/logos/urlhaus.svg' },
 };
 
 export const SOURCE_CATEGORIES = {
@@ -694,7 +694,7 @@ export default function SourceCard({ source }) {
         <div className="px-4 pb-4 border-t border-white/[0.05]">
           <div className="pt-3 text-center py-3">
             <AlertCircle className="w-7 h-7 text-red-400/40 mx-auto mb-2" />
-            <p className="text-white/45 text-xs font-mono">Source unreachable for this scan.</p>
+            <p className="text-white/45 text-xs font-mono">Data is not available from this source at this time.</p>
           </div>
         </div>
       )}

@@ -200,14 +200,14 @@ export default function Hero({ onExampleCta, error, health }) {
             {apiKnown && !apiOnline ? (
               <>
                 Multi-agent threat intelligence for SOC analysts. The backend is currently
-                <span className="text-red-300"> unreachable</span> — start the API on{' '}
+                <span className="text-red-300"> unreachable</span>: start the API on{' '}
                 <span className="font-mono text-white">:8000</span> and refresh to begin scanning.
               </>
             ) : (
               <>
                 Multi-agent threat intelligence for SOC analysts. Query{' '}
                 <span className="text-white">14 OSINT sources</span> in parallel, then synthesize
-                the findings into a single, actionable brief — verdict, severity, and recommended
+                the findings into a single, actionable brief: verdict, severity, and recommended
                 response, in under <span className="font-mono text-white">~6 seconds</span>.
               </>
             )}

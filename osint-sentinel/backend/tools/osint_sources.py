@@ -319,10 +319,7 @@ def query_otx(target: str, query_type: str = "domain") -> dict:
     """Query AlienVault OTX for threat intelligence pulses."""
     settings = get_settings()
     api_key = settings.otx_api_key.get_secret_value()
-    if not api_key:
-        return {"source": "alienvault_otx", "error": "API key not configured"}
-
-    headers = {"X-OTX-API-KEY": api_key}
+    headers = {"X-OTX-API-KEY": api_key} if api_key else {}
     base = "https://otx.alienvault.com/api/v1"
     section = "IPv4" if query_type == "ip" else "domain"
     _timeout = _OTX_TIMEOUT
@@ -349,7 +346,7 @@ def query_otx(target: str, query_type: str = "domain") -> dict:
             dns_data = f_dns.result()
             mal_data = f_mal.result()
 
-        # Key rejected or stale — retry all three endpoints anonymously
+        # Key rejected/stale or no key configured — retry anonymously
         if not general and api_key:
             logger.warning("OTX key rejected or timed out; retrying anonymously")
             with ThreadPoolExecutor(max_workers=3) as pool:

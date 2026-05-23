@@ -22,7 +22,7 @@ export default function Footer() {
       </p>
 
       {/* Attribution */}
-      <p className="font-mono text-[11px] text-white/30">
+      <p className="font-mono text-sm text-white/30">
         Made by{' '}
         <a
           href="https://www.linkedin.com/in/rish-pednekar/"

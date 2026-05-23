@@ -21,9 +21,17 @@ export default function Footer() {
         © 2026 OSINT Sentinel · All rights reserved
       </p>
 
-      {/* Version */}
-      <p className="font-mono text-[11px] text-white/25">
-        v1.0 · Built for SOC analysts
+      {/* Attribution */}
+      <p className="font-mono text-[11px] text-white/30">
+        Made by{' '}
+        <a
+          href="https://www.linkedin.com/in/rish-pednekar/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-violet-400 hover:text-violet-300 transition-colors"
+        >
+          Rish Pednekar
+        </a>
       </p>
     </footer>
   );

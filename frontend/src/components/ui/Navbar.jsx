@@ -80,8 +80,14 @@ export function Navbar({ health }) {
     }
   };
 
+  const handleLogoClick = () => {
+    if (location.pathname === '/') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
   const logoMark = (
-    <Link to="/" className="flex items-center gap-2.5 no-underline group" aria-label="OSINT Sentinel home">
+    <Link to="/" onClick={handleLogoClick} className="flex items-center gap-2.5 no-underline group" aria-label="OSINT Sentinel home">
       <div
         className="relative w-7 h-7 rounded-md bg-sentinel-purple/[0.1] border border-sentinel-purple/30 flex items-center justify-center flex-shrink-0 transition-all duration-200 group-hover:border-sentinel-purple/60"
         style={{ boxShadow: '0 0 12px rgba(139,92,246,0.2)' }}

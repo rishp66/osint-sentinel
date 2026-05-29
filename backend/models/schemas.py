@@ -35,6 +35,9 @@ def is_blocked_ip(ip_str: str) -> bool:
         addr = ipaddress.ip_address(ip_str)
     except ValueError:
         return False
+    mapped = getattr(addr, "ipv4_mapped", None)
+    if mapped is not None:
+        addr = mapped
     return any(addr in net for net in _BLOCKED_NETWORKS)
 
 

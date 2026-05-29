@@ -2,9 +2,10 @@
 
 from unittest.mock import patch
 from fastapi.testclient import TestClient
+from starlette.requests import Request
 
 from config.settings import get_settings
-from main import app
+from main import app, _client_ip, _rate_hits
 
 client = TestClient(app)
 
@@ -27,6 +28,24 @@ MOCK_RESULT = {
 }
 
 
+def _request_with_headers(headers: dict[str, str], client_host: str = "203.0.113.10"):
+    return Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/scan",
+            "headers": [
+                (name.lower().encode("latin-1"), value.encode("latin-1"))
+                for name, value in headers.items()
+            ],
+            "client": (client_host, 12345),
+            "server": ("testserver", 80),
+            "scheme": "http",
+            "query_string": b"",
+        }
+    )
+
+
 # ─── /health ─────────────────────────────────────────────────────────────────
 
 
@@ -42,6 +61,29 @@ class TestHealthEndpoint:
     def test_no_auth_required(self):
         response = client.get("/health")
         assert response.status_code != 401
+
+
+class TestClientIp:
+    def test_uses_rightmost_forwarded_for_hop_when_trusted(self, monkeypatch):
+        monkeypatch.setenv("TRUST_PROXY_HEADERS", "true")
+        get_settings.cache_clear()
+        try:
+            request = _request_with_headers(
+                {"X-Forwarded-For": "10.0.0.99, 198.51.100.23"}
+            )
+
+            assert _client_ip(request) == "198.51.100.23"
+        finally:
+            monkeypatch.delenv("TRUST_PROXY_HEADERS", raising=False)
+            get_settings.cache_clear()
+
+    def test_ignores_spoofed_forwarded_for_when_not_trusted(self):
+        request = _request_with_headers(
+            {"X-Forwarded-For": "10.0.0.99, 198.51.100.23"},
+            client_host="203.0.113.44",
+        )
+
+        assert _client_ip(request) == "203.0.113.44"
 
 
 # ─── /scan ───────────────────────────────────────────────────────────────────
@@ -94,6 +136,18 @@ class TestScanEndpoint:
         assert response.status_code == 200
         assert response.json()["target"] == "8.8.8.8"
 
+    def test_ipv4_mapped_loopback_target_returns_422(self):
+        response = client.post("/scan", json={"target": "::ffff:127.0.0.1"})
+
+        assert response.status_code == 422
+
+    def test_ipv4_mapped_metadata_url_returns_422(self):
+        response = client.post(
+            "/scan", json={"target": "http://[::ffff:169.254.169.254]/"}
+        )
+
+        assert response.status_code == 422
+
     def test_response_sources_is_list(self):
         with patch("main.run_scan", return_value=MOCK_RESULT):
             response = client.post("/scan", json={"target": "example.com"})
@@ -103,6 +157,30 @@ class TestScanEndpoint:
     def test_get_method_not_allowed(self):
         response = client.get("/scan")
         assert response.status_code == 405
+
+    def test_rate_limit_uses_trusted_proxy_hop(self, monkeypatch):
+        monkeypatch.setenv("TRUST_PROXY_HEADERS", "true")
+        get_settings.cache_clear()
+        _rate_hits.clear()
+        try:
+            with patch("main.run_scan", return_value=MOCK_RESULT):
+                responses = [
+                    client.post(
+                        "/scan",
+                        json={"target": "example.com"},
+                        headers={
+                            "X-Forwarded-For": f"10.0.0.{i}, 198.51.100.23"
+                        },
+                    )
+                    for i in range(11)
+                ]
+
+            assert [response.status_code for response in responses[:10]] == [200] * 10
+            assert responses[10].status_code == 429
+        finally:
+            monkeypatch.delenv("TRUST_PROXY_HEADERS", raising=False)
+            get_settings.cache_clear()
+            _rate_hits.clear()
 
     def test_api_key_missing_returns_401_when_configured(self, monkeypatch):
         monkeypatch.setenv("API_KEY", "integration-test-secret")

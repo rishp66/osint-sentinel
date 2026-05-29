@@ -38,10 +38,11 @@ def _client_ip(request: Request) -> str:
     if settings.trust_proxy_headers:
         xff = request.headers.get("x-forwarded-for")
         if xff:
-            # Leftmost entry is the original client (per RFC 7239 convention).
-            ip = xff.split(",")[0].strip()
-            if ip:
-                return ip
+            # Trust the closest configured proxy hop. Upstream clients can
+            # supply leftmost XFF entries, so using them would bypass limits.
+            forwarded_ips = [part.strip() for part in xff.split(",") if part.strip()]
+            if forwarded_ips:
+                return forwarded_ips[-1]
         real_ip = request.headers.get("x-real-ip")
         if real_ip:
             return real_ip.strip()

@@ -67,8 +67,8 @@ class Settings(BaseSettings):
 
     # ── Deployment: when running behind a reverse proxy / load balancer
     # (Cloudflare, nginx, fly.io, etc.), set this to "true" so the rate
-    # limiter and access logging trust the leftmost X-Forwarded-For / the
-    # X-Real-IP header instead of the proxy's own socket address.
+    # limiter and access logging trust proxy-forwarded client identity instead
+    # of the proxy's own socket address.
     # Only enable when you actually have a trusted proxy in front, otherwise
     # clients can spoof their identity.
     trust_proxy_headers: bool = False

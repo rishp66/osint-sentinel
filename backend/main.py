@@ -1,4 +1,5 @@
 import asyncio
+import ipaddress
 import logging
 import secrets
 import threading
@@ -8,7 +9,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import RedirectResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from models.schemas import ScanRequest, ScanResponse
@@ -26,6 +27,14 @@ _rate_hits: "OrderedDict[str, list[float]]" = OrderedDict()
 _rate_lock = threading.Lock()
 
 
+def _parse_ip(value: str) -> str:
+    """Return a normalized IP string, or empty string when the value is not an IP."""
+    try:
+        return str(ipaddress.ip_address(value.strip()))
+    except ValueError:
+        return ""
+
+
 def _client_ip(request: Request) -> str:
     """Return the originating client IP, honoring trusted proxy headers
     (X-Forwarded-For, X-Real-IP) only when explicitly enabled in settings.
@@ -38,14 +47,28 @@ def _client_ip(request: Request) -> str:
     if settings.trust_proxy_headers:
         xff = request.headers.get("x-forwarded-for")
         if xff:
-            # Leftmost entry is the original client (per RFC 7239 convention).
-            ip = xff.split(",")[0].strip()
-            if ip:
-                return ip
-        real_ip = request.headers.get("x-real-ip")
+            # Proxies append their observed client to the right; the leftmost
+            # value may be supplied by the caller and is therefore spoofable.
+            for candidate in reversed(xff.split(",")):
+                ip = _parse_ip(candidate)
+                if ip:
+                    return ip
+        real_ip = _parse_ip(request.headers.get("x-real-ip") or "")
         if real_ip:
-            return real_ip.strip()
+            return real_ip
     return request.client.host if request.client else "unknown"
+
+
+def enforce_rate_limit(request: Request) -> str:
+    """Apply the /scan per-client limit before expensive work or auth checks."""
+    ip = _client_ip(request)
+    if _is_rate_limited(ip):
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded. Try again in a minute.",
+            headers={"Retry-After": "60"},
+        )
+    return ip
 
 
 def _is_rate_limited(ip: str) -> bool:
@@ -217,16 +240,9 @@ def health():
 async def scan(
     request: Request,
     req: ScanRequest,
+    client_ip: str = Depends(enforce_rate_limit),
     _auth: None = Depends(require_api_key_if_configured),
 ):
-    client_ip = _client_ip(request)
-    if _is_rate_limited(client_ip):
-        return JSONResponse(
-            status_code=429,
-            content={"detail": "Rate limit exceeded. Try again in a minute."},
-            headers={"Retry-After": "60"},
-        )
-
     target = req.target.strip()
     if not target:
         raise HTTPException(status_code=422, detail="Target must not be empty.")

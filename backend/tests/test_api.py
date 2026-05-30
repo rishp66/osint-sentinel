@@ -1,8 +1,10 @@
 """Integration tests for FastAPI endpoints — run_scan is mocked."""
 
+import pytest
 from unittest.mock import patch
 from fastapi.testclient import TestClient
 
+import main
 from config.settings import get_settings
 from main import app
 
@@ -25,6 +27,15 @@ MOCK_RESULT = {
     "scan_duration_ms": 1234.5,
     "agent_report": "### Endpoint Summary\nTest endpoint.",
 }
+
+
+@pytest.fixture(autouse=True)
+def reset_rate_limit():
+    with main._rate_lock:
+        main._rate_hits.clear()
+    yield
+    with main._rate_lock:
+        main._rate_hits.clear()
 
 
 # ─── /health ─────────────────────────────────────────────────────────────────
@@ -144,3 +155,39 @@ class TestScanEndpoint:
         finally:
             monkeypatch.delenv("API_KEY", raising=False)
             get_settings.cache_clear()
+
+    def test_failed_auth_attempts_are_rate_limited(self, monkeypatch):
+        monkeypatch.setenv("API_KEY", "integration-test-secret")
+        get_settings.cache_clear()
+        try:
+            with patch("main.run_scan", return_value=MOCK_RESULT):
+                statuses = [
+                    client.post("/scan", json={"target": "example.com"}).status_code
+                    for _ in range(11)
+                ]
+        finally:
+            monkeypatch.delenv("API_KEY", raising=False)
+            get_settings.cache_clear()
+        assert statuses[:10] == [401] * 10
+        assert statuses[10] == 429
+
+    def test_rate_limit_uses_proxy_appended_x_forwarded_for(self, monkeypatch):
+        monkeypatch.setenv("TRUST_PROXY_HEADERS", "true")
+        get_settings.cache_clear()
+        try:
+            with patch("main.run_scan", return_value=MOCK_RESULT):
+                statuses = [
+                    client.post(
+                        "/scan",
+                        json={"target": "example.com"},
+                        headers={
+                            "X-Forwarded-For": f"198.51.100.{idx}, 8.8.8.8"
+                        },
+                    ).status_code
+                    for idx in range(1, 12)
+                ]
+        finally:
+            monkeypatch.delenv("TRUST_PROXY_HEADERS", raising=False)
+            get_settings.cache_clear()
+        assert statuses[:10] == [200] * 10
+        assert statuses[10] == 429

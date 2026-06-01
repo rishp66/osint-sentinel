@@ -27,24 +27,25 @@ _rate_lock = threading.Lock()
 
 
 def _client_ip(request: Request) -> str:
-    """Return the originating client IP, honoring trusted proxy headers
-    (X-Forwarded-For, X-Real-IP) only when explicitly enabled in settings.
+    """Return the originating client IP for rate limiting and access logging.
 
-    Without this, deployments behind a proxy/load balancer would see every
-    request as coming from the proxy's socket address and either bucket all
-    users into one rate-limit window or trust spoofable headers by default.
+    Trusted proxy headers are used only when explicitly enabled. For
+    X-Forwarded-For, trust the rightmost non-empty hop because Azure Container
+    Apps appends the platform-observed client address; leftmost values can be
+    client supplied and must not control the rate-limit bucket.
     """
     settings = get_settings()
     if settings.trust_proxy_headers:
         xff = request.headers.get("x-forwarded-for")
         if xff:
-            # Leftmost entry is the original client (per RFC 7239 convention).
-            ip = xff.split(",")[0].strip()
-            if ip:
-                return ip
+            forwarded_ips = [ip.strip() for ip in xff.split(",") if ip.strip()]
+            if forwarded_ips:
+                return forwarded_ips[-1]
         real_ip = request.headers.get("x-real-ip")
         if real_ip:
-            return real_ip.strip()
+            ip = real_ip.strip()
+            if ip:
+                return ip
     return request.client.host if request.client else "unknown"
 
 

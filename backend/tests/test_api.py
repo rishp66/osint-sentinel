@@ -1,10 +1,12 @@
 """Integration tests for FastAPI endpoints — run_scan is mocked."""
 
 from unittest.mock import patch
+
+import pytest
 from fastapi.testclient import TestClient
 
 from config.settings import get_settings
-from main import app
+from main import app, _rate_hits, _rate_lock
 
 client = TestClient(app)
 
@@ -25,6 +27,15 @@ MOCK_RESULT = {
     "scan_duration_ms": 1234.5,
     "agent_report": "### Endpoint Summary\nTest endpoint.",
 }
+
+
+@pytest.fixture(autouse=True)
+def clear_rate_limiter():
+    with _rate_lock:
+        _rate_hits.clear()
+    yield
+    with _rate_lock:
+        _rate_hits.clear()
 
 
 # ─── /health ─────────────────────────────────────────────────────────────────
@@ -143,4 +154,30 @@ class TestScanEndpoint:
             assert response.status_code == 200
         finally:
             monkeypatch.delenv("API_KEY", raising=False)
+            get_settings.cache_clear()
+
+    def test_trusted_proxy_rate_limit_uses_appended_forwarded_ip(self, monkeypatch):
+        monkeypatch.setenv("TRUST_PROXY_HEADERS", "true")
+        get_settings.cache_clear()
+        try:
+            with patch("main.run_scan", return_value=MOCK_RESULT):
+                for idx in range(10):
+                    response = client.post(
+                        "/scan",
+                        json={"target": "example.com"},
+                        headers={
+                            "X-Forwarded-For": f"203.0.113.{idx}, 198.51.100.10"
+                        },
+                    )
+                    assert response.status_code == 200
+
+                response = client.post(
+                    "/scan",
+                    json={"target": "example.com"},
+                    headers={"X-Forwarded-For": "203.0.113.250, 198.51.100.10"},
+                )
+
+            assert response.status_code == 429
+        finally:
+            monkeypatch.delenv("TRUST_PROXY_HEADERS", raising=False)
             get_settings.cache_clear()

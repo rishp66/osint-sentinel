@@ -1,0 +1,11 @@
+{
+  "navigationFallback": {
+    "rewrite": "/index.html",
+    "exclude": [
+      "/assets/*",
+      "/logos/*",
+      "/vendor-logos/*",
+      "/*.{css,js,ico,png,jpg,jpeg,gif,svg,webp,json,txt}"
+    ]
+  }
+}

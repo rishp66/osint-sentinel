@@ -38,22 +38,103 @@ from tools.agent_report import generate_report
 from models.schemas import is_blocked_ip
 
 
+def _as_int(value, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _as_float(value, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def _compute_raw_score(sources: list[dict]) -> int:
     """Heuristic risk score from raw OSINT data when LLM synthesis is unavailable."""
     score = 0
+    risk_weights = {
+        "critical": 90,
+        "high": 75,
+        "malicious": 75,
+        "medium": 50,
+        "suspicious": 40,
+        "low": 20,
+        "none": 0,
+        "benign": 0,
+        "unknown": 0,
+    }
     for s in sources:
         if s.get("error"):
             continue
-        malicious = s.get("malicious", 0)
+        name = s.get("source", "")
+
+        malicious = _as_int(s.get("malicious", 0))
         if malicious:
             score += min(malicious * 4, 40)
-        abuse = s.get("abuse_confidence_score", 0)
+        suspicious = _as_int(s.get("suspicious", 0))
+        if suspicious:
+            score += min(suspicious * 2, 20)
+
+        abuse = _as_int(s.get("abuse_confidence_score", 0))
         if abuse:
             score = max(score, abuse // 2)
-        pulses = s.get("pulse_count", 0)
+        pulses = _as_int(s.get("pulse_count", 0))
         if pulses:
             score += min(pulses * 2, 20)
+
+        # Newer threat feeds return source-specific signals rather than a
+        # generic "malicious" count. Treat confirmed matches as high-confidence
+        # raw evidence so LLM outages do not produce false LOW/0 verdicts.
+        if name == "threatfox":
+            matches = _as_int(s.get("match_count", 0))
+            if matches:
+                score = max(score, min(60 + matches * 5, 85))
+        elif name == "urlhaus":
+            if s.get("query_status") == "ok":
+                score = max(score, 80)
+            url_hits = max(
+                _as_int(s.get("urls_online", 0)),
+                _as_int(s.get("url_count", 0)),
+            )
+            if url_hits:
+                score = max(score, min(60 + url_hits * 5, 85))
+        elif name == "malwarebazaar":
+            samples = s.get("samples") or []
+            sample_count = len(samples) if isinstance(samples, list) else 0
+            if s.get("query_status") == "ok" or sample_count:
+                score = max(score, min(70 + sample_count * 5, 90))
+        elif name == "hybrid_analysis":
+            for item in s.get("results") or []:
+                score = max(score, _as_int(item.get("threat_score", 0)))
+                score = max(score, min(_as_int(item.get("av_detect", 0)) * 5, 80))
+        elif name == "pulsedive":
+            risk = str(s.get("risk_recommended") or s.get("risk") or "").lower()
+            score = max(score, risk_weights.get(risk, 0))
+        elif name == "greynoise":
+            classification = str(s.get("classification") or "").lower()
+            score = max(score, risk_weights.get(classification, 0))
+        elif name == "shodan":
+            vulns = s.get("vulns") or []
+            vuln_count = len(vulns) if isinstance(vulns, list) else _as_int(vulns, 0)
+            if vuln_count:
+                score = max(score, min(35 + vuln_count * 5, 75))
+        elif name == "circl_cve":
+            cvss = _as_float(s.get("cvss", 0.0))
+            if cvss:
+                score = max(score, min(round(cvss * 10), 100))
     return min(score, 100)
+
+
+def _raw_fallback_synthesis(sources: list[dict]) -> dict:
+    score = _compute_raw_score(sources)
+    return {
+        "threat_brief": "LLM synthesis unavailable — raw intelligence data collected above.",
+        "risk_score": score,
+        "risk_level": score_to_level(score),
+    }
 
 
 # Bounded LRU cache: evicts the oldest entry once _CACHE_MAX is exceeded so a
@@ -371,13 +452,13 @@ def run_scan(target: str) -> dict:
         f_report = llm_pool.submit(generate_report, target, llm_sources)
         try:
             synthesis = f_synth.result(timeout=35)
+            if (
+                _as_int(synthesis.get("risk_score", 0)) == 0
+                and str(synthesis.get("risk_level", "")).upper() == "UNKNOWN"
+            ):
+                synthesis = _raw_fallback_synthesis(sources)
         except Exception:
-            _fb_score = _compute_raw_score(sources)
-            synthesis = {
-                "threat_brief": "LLM synthesis unavailable — raw intelligence data collected above.",
-                "risk_score": _fb_score,
-                "risk_level": score_to_level(_fb_score),
-            }
+            synthesis = _raw_fallback_synthesis(sources)
         try:
             agent_report = f_report.result(timeout=45)
         except Exception:

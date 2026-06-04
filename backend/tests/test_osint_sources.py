@@ -457,13 +457,17 @@ class TestQueryOTX:
             }
         return resp
 
-    def test_missing_key_returns_error(self):
+    def test_missing_key_uses_anonymous_fallback(self):
         with patch(
             "tools.osint_sources.get_settings", return_value=_settings(otx_api_key="")
         ):
-            r = query_otx("example.com")
+            with patch(
+                "tools.osint_sources._SESSION.get", side_effect=self._mock_get
+            ) as mg:
+                r = query_otx("example.com")
         assert r["source"] == "alienvault_otx"
-        assert "error" in r
+        assert r["pulse_count"] == 2
+        assert all(call.kwargs["headers"] == {} for call in mg.call_args_list)
 
     def test_success_all_sections(self):
         with patch("tools.osint_sources.get_settings", return_value=_settings()):

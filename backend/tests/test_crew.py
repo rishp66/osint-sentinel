@@ -4,7 +4,13 @@ import pytest
 from unittest.mock import patch
 
 import agents.crew as crew
-from agents.crew import run_scan, _detect_type, _build_tasks, InvalidTargetError
+from agents.crew import (
+    run_scan,
+    _compute_raw_score,
+    _detect_type,
+    _build_tasks,
+    InvalidTargetError,
+)
 
 
 # ─── helpers ─────────────────────────────────────────────────────────────────
@@ -276,6 +282,82 @@ class TestRunScan:
             s["source"] == "ipinfo" and "ipinfo exploded" in s["error"]
             for s in error_srcs
         )
+
+    def test_unknown_llm_result_falls_back_to_raw_threat_score(self):
+        """synthesize() catches provider failures and returns UNKNOWN/0.
+
+        run_scan must still score high-confidence source matches so malicious
+        IOCs do not look clean during an LLM outage.
+        """
+        patches = [
+            patch("agents.crew.query_virustotal", return_value=_src("virustotal")),
+            patch(
+                "agents.crew.query_hybrid_analysis",
+                return_value=_src("hybrid_analysis"),
+            ),
+            patch(
+                "agents.crew.query_malwarebazaar",
+                return_value={
+                    "source": "malwarebazaar",
+                    "query_status": "ok",
+                    "samples": [{"sha256_hash": "a" * 64}],
+                },
+            ),
+            patch(
+                "agents.crew.query_threatfox",
+                return_value={"source": "threatfox", "match_count": 1, "matches": [{}]},
+            ),
+            patch(
+                "agents.crew.query_urlhaus",
+                return_value={"source": "urlhaus", "query_status": "ok"},
+            ),
+            patch("agents.crew.query_pulsedive", return_value=_src("pulsedive")),
+            patch(
+                "agents.crew.synthesize",
+                return_value={
+                    "threat_brief": "LLM synthesis temporarily unavailable.",
+                    "risk_score": 0,
+                    "risk_level": "UNKNOWN",
+                },
+            ),
+            patch("agents.crew.generate_report", return_value=MOCK_REPORT),
+        ]
+        for p in patches:
+            p.start()
+        try:
+            result = run_scan("a" * 64)
+        finally:
+            for p in patches:
+                p.stop()
+
+        assert result["risk_score"] >= 80
+        assert result["risk_level"] == "CRITICAL"
+
+
+class TestRawFallbackScore:
+    def test_scores_new_threat_feed_matches(self):
+        sources = [
+            {"source": "threatfox", "match_count": 1, "matches": [{}]},
+            {"source": "urlhaus", "query_status": "ok", "url_count": 1},
+            {
+                "source": "malwarebazaar",
+                "query_status": "ok",
+                "samples": [{"sha256_hash": "a" * 64}],
+            },
+        ]
+
+        assert _compute_raw_score(sources) >= 80
+
+    def test_scores_hybrid_and_pulsedive_risk_fields(self):
+        sources = [
+            {
+                "source": "hybrid_analysis",
+                "results": [{"threat_score": 65, "av_detect": 12}],
+            },
+            {"source": "pulsedive", "risk_recommended": "high"},
+        ]
+
+        assert _compute_raw_score(sources) >= 75
 
 
 class TestResolvedPrivateIPBlocked:

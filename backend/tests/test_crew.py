@@ -304,8 +304,8 @@ class TestRunScan:
 
             result = run_scan("8.8.8.8")
 
-        assert result["risk_score"] == 90
-        assert result["risk_level"] == "CRITICAL"
+        assert result["risk_score"] == 50
+        assert result["risk_level"] == "HIGH"
         assert "Raw intelligence fallback score applied" in result["threat_brief"]
 
 

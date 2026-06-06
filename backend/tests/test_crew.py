@@ -187,6 +187,17 @@ class TestBuildTasks:
         assert set(tasks.keys()) == {"circl_cve", "cve_mcp"}
 
 
+class TestRawScore:
+    def test_raw_score_is_order_independent_for_mixed_signals(self):
+        sources = [
+            {"source": "virustotal", "malicious": 20},
+            {"source": "abuseipdb", "abuse_confidence_score": 100},
+        ]
+
+        assert crew._compute_raw_score(sources) == 90
+        assert crew._compute_raw_score(list(reversed(sources))) == 90
+
+
 # ─── run_scan — integration-style tests with mocked sources ─────────────────
 
 
@@ -304,8 +315,8 @@ class TestRunScan:
 
             result = run_scan("8.8.8.8")
 
-        assert result["risk_score"] == 50
-        assert result["risk_level"] == "HIGH"
+        assert result["risk_score"] == 90
+        assert result["risk_level"] == "CRITICAL"
         assert "Raw intelligence fallback score applied" in result["threat_brief"]
 
 

@@ -1,5 +1,6 @@
 """Unit tests for agents/crew.py — all OSINT functions and LLM calls mocked."""
 
+from contextlib import ExitStack
 import pytest
 from unittest.mock import patch
 
@@ -276,6 +277,36 @@ class TestRunScan:
             s["source"] == "ipinfo" and "ipinfo exploded" in s["error"]
             for s in error_srcs
         )
+
+    def test_llm_unknown_zero_uses_raw_score_for_malicious_sources(self):
+        with ExitStack() as stack:
+            for name in _ALL_SOURCES:
+                result = _src(name.replace("query_", ""))
+                if name == "query_virustotal":
+                    result = {"source": "virustotal", "malicious": 20}
+                elif name == "query_abuseipdb":
+                    result = {"source": "abuseipdb", "abuse_confidence_score": 100}
+                stack.enter_context(patch(f"agents.crew.{name}", return_value=result))
+
+            stack.enter_context(
+                patch(
+                    "agents.crew.synthesize",
+                    return_value={
+                        "threat_brief": "LLM synthesis temporarily unavailable.",
+                        "risk_score": 0,
+                        "risk_level": "UNKNOWN",
+                    },
+                )
+            )
+            stack.enter_context(
+                patch("agents.crew.generate_report", return_value=MOCK_REPORT)
+            )
+
+            result = run_scan("8.8.8.8")
+
+        assert result["risk_score"] == 90
+        assert result["risk_level"] == "CRITICAL"
+        assert "Raw intelligence fallback score applied" in result["threat_brief"]
 
 
 class TestResolvedPrivateIPBlocked:

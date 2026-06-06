@@ -56,6 +56,31 @@ def _compute_raw_score(sources: list[dict]) -> int:
     return min(score, 100)
 
 
+def _apply_raw_score_fallback(synthesis: dict, sources: list[dict]) -> dict:
+    """Use source-derived risk when synthesis returned no usable risk score."""
+    raw_score = _compute_raw_score(sources)
+    if raw_score <= 0:
+        return synthesis
+
+    try:
+        synth_score = int(synthesis.get("risk_score", 0))
+    except (TypeError, ValueError):
+        synth_score = 0
+
+    if synth_score != 0 or str(synthesis.get("risk_level", "")).upper() != "UNKNOWN":
+        return synthesis
+
+    brief = synthesis.get("threat_brief") or "LLM synthesis did not produce a risk assessment."
+    return {
+        "threat_brief": (
+            f"{brief} Raw intelligence fallback score applied because source data "
+            "contained high-confidence malicious indicators."
+        ),
+        "risk_score": raw_score,
+        "risk_level": score_to_level(raw_score),
+    }
+
+
 # Bounded LRU cache: evicts the oldest entry once _CACHE_MAX is exceeded so a
 # steady stream of unique targets cannot grow memory without bound. Reads also
 # enforce a TTL window before returning a cached result.
@@ -370,7 +395,7 @@ def run_scan(target: str) -> dict:
         f_synth = llm_pool.submit(synthesize, target, llm_sources, 30)
         f_report = llm_pool.submit(generate_report, target, llm_sources)
         try:
-            synthesis = f_synth.result(timeout=35)
+            synthesis = _apply_raw_score_fallback(f_synth.result(timeout=35), sources)
         except Exception:
             _fb_score = _compute_raw_score(sources)
             synthesis = {

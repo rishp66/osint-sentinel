@@ -38,8 +38,9 @@ def _client_ip(request: Request) -> str:
     if settings.trust_proxy_headers:
         xff = request.headers.get("x-forwarded-for")
         if xff:
-            # Leftmost entry is the original client (per RFC 7239 convention).
-            ip = xff.split(",")[0].strip()
+            # Azure/front proxies append the observed client to the right side.
+            # Using the leftmost caller-supplied value lets attackers mint buckets.
+            ip = xff.split(",")[-1].strip()
             if ip:
                 return ip
         real_ip = request.headers.get("x-real-ip")

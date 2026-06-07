@@ -4,7 +4,7 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from config.settings import get_settings
-from main import app
+from main import app, _rate_hits
 
 client = TestClient(app)
 
@@ -94,6 +94,20 @@ class TestScanEndpoint:
         assert response.status_code == 200
         assert response.json()["target"] == "8.8.8.8"
 
+    def test_ipv4_mapped_loopback_target_rejected(self):
+        with patch("main.run_scan", return_value=MOCK_RESULT) as mock_run:
+            response = client.post("/scan", json={"target": "::ffff:127.0.0.1"})
+        assert response.status_code == 422
+        mock_run.assert_not_called()
+
+    def test_ipv4_mapped_metadata_url_rejected(self):
+        with patch("main.run_scan", return_value=MOCK_RESULT) as mock_run:
+            response = client.post(
+                "/scan", json={"target": "http://[::ffff:169.254.169.254]/"}
+            )
+        assert response.status_code == 422
+        mock_run.assert_not_called()
+
     def test_response_sources_is_list(self):
         with patch("main.run_scan", return_value=MOCK_RESULT):
             response = client.post("/scan", json={"target": "example.com"})
@@ -103,6 +117,32 @@ class TestScanEndpoint:
     def test_get_method_not_allowed(self):
         response = client.get("/scan")
         assert response.status_code == 405
+
+    def test_proxy_spoofed_xff_values_share_rate_limit(self, monkeypatch):
+        monkeypatch.setenv("TRUST_PROXY_HEADERS", "true")
+        get_settings.cache_clear()
+        _rate_hits.clear()
+        try:
+            with patch("main.run_scan", return_value=MOCK_RESULT) as mock_run:
+                responses = [
+                    client.post(
+                        "/scan",
+                        json={"target": "example.com"},
+                        headers={
+                            "X-Forwarded-For": (
+                                f"203.0.113.{i}, 198.51.100.9"
+                            )
+                        },
+                    )
+                    for i in range(11)
+                ]
+            assert [response.status_code for response in responses[:10]] == [200] * 10
+            assert responses[10].status_code == 429
+            assert mock_run.call_count == 10
+        finally:
+            _rate_hits.clear()
+            monkeypatch.delenv("TRUST_PROXY_HEADERS", raising=False)
+            get_settings.cache_clear()
 
     def test_api_key_missing_returns_401_when_configured(self, monkeypatch):
         monkeypatch.setenv("API_KEY", "integration-test-secret")

@@ -4,7 +4,13 @@ import pytest
 from unittest.mock import patch
 
 import agents.crew as crew
-from agents.crew import run_scan, _detect_type, _build_tasks, InvalidTargetError
+from agents.crew import (
+    run_scan,
+    _detect_type,
+    _build_tasks,
+    _compute_raw_score,
+    InvalidTargetError,
+)
 
 
 # ─── helpers ─────────────────────────────────────────────────────────────────
@@ -186,6 +192,18 @@ class TestBuildTasks:
         assert set(tasks.keys()) == {"circl_cve", "cve_mcp"}
 
 
+class TestComputeRawScore:
+    def test_score_is_independent_of_source_completion_order(self):
+        sources = [
+            {"source": "virustotal", "malicious": 12},
+            {"source": "abuseipdb", "abuse_confidence_score": 90},
+            {"source": "alienvault_otx", "pulse_count": 20},
+        ]
+
+        assert _compute_raw_score(sources) == 60
+        assert _compute_raw_score(list(reversed(sources))) == 60
+
+
 # ─── run_scan — integration-style tests with mocked sources ─────────────────
 
 
@@ -246,6 +264,48 @@ class TestRunScan:
         names = {s["source"] for s in result["sources"]}
         assert "circl_cve" in names
         assert result["risk_score"] == MOCK_SYNTH["risk_score"]
+
+    def test_llm_unknown_response_falls_back_to_raw_risk_score(self):
+        patches = [
+            patch(
+                "agents.crew.query_virustotal",
+                return_value={"source": "virustotal", "malicious": 12},
+            ),
+            patch(
+                "agents.crew.query_abuseipdb",
+                return_value={"source": "abuseipdb", "abuse_confidence_score": 90},
+            ),
+            patch(
+                "agents.crew.query_otx",
+                return_value={"source": "alienvault_otx", "pulse_count": 20},
+            ),
+            patch(
+                "agents.crew.synthesize",
+                return_value={
+                    "threat_brief": "LLM synthesis temporarily unavailable.",
+                    "risk_score": 0,
+                    "risk_level": "UNKNOWN",
+                },
+            ),
+            patch("agents.crew.generate_report", return_value=MOCK_REPORT),
+        ]
+        for name in _ALL_SOURCES:
+            if name in {"query_virustotal", "query_abuseipdb", "query_otx"}:
+                continue
+            patches.append(
+                patch(f"agents.crew.{name}", return_value=_src(name.replace("query_", "")))
+            )
+
+        for p in patches:
+            p.start()
+        try:
+            result = run_scan("8.8.8.8")
+        finally:
+            for p in patches:
+                p.stop()
+
+        assert result["risk_score"] == 60
+        assert result["risk_level"] == "HIGH"
 
     def test_url_scan_routes_to_url_sources(self):
         result, _ = _run_with_mocks("https://phish.example/login")

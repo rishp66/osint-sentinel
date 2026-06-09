@@ -378,6 +378,10 @@ def run_scan(target: str) -> dict:
                 "risk_score": _fb_score,
                 "risk_level": score_to_level(_fb_score),
             }
+        if synthesis.get("risk_level") == "UNKNOWN":
+            _fb_score = _compute_raw_score(sources)
+            synthesis["risk_score"] = _fb_score
+            synthesis["risk_level"] = score_to_level(_fb_score)
         try:
             agent_report = f_report.result(timeout=45)
         except Exception:

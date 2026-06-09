@@ -40,19 +40,21 @@ from models.schemas import is_blocked_ip
 
 def _compute_raw_score(sources: list[dict]) -> int:
     """Heuristic risk score from raw OSINT data when LLM synthesis is unavailable."""
-    score = 0
+    signal_score = 0
+    abuse_floor = 0
     for s in sources:
         if s.get("error"):
             continue
         malicious = s.get("malicious", 0)
         if malicious:
-            score += min(malicious * 4, 40)
+            signal_score += min(malicious * 4, 40)
         abuse = s.get("abuse_confidence_score", 0)
         if abuse:
-            score = max(score, abuse // 2)
+            abuse_floor = max(abuse_floor, abuse // 2)
         pulses = s.get("pulse_count", 0)
         if pulses:
-            score += min(pulses * 2, 20)
+            signal_score += min(pulses * 2, 20)
+    score = max(signal_score, abuse_floor)
     return min(score, 100)
 
 

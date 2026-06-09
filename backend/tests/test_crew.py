@@ -4,7 +4,13 @@ import pytest
 from unittest.mock import patch
 
 import agents.crew as crew
-from agents.crew import run_scan, _detect_type, _build_tasks, InvalidTargetError
+from agents.crew import (
+    run_scan,
+    _detect_type,
+    _build_tasks,
+    _compute_raw_score,
+    InvalidTargetError,
+)
 
 
 # ─── helpers ─────────────────────────────────────────────────────────────────
@@ -186,6 +192,18 @@ class TestBuildTasks:
         assert set(tasks.keys()) == {"circl_cve", "cve_mcp"}
 
 
+class TestComputeRawScore:
+    def test_score_is_independent_of_source_completion_order(self):
+        sources = [
+            {"source": "virustotal", "malicious": 12},
+            {"source": "abuseipdb", "abuse_confidence_score": 90},
+            {"source": "alienvault_otx", "pulse_count": 20},
+        ]
+
+        assert _compute_raw_score(sources) == 60
+        assert _compute_raw_score(list(reversed(sources))) == 60
+
+
 # ─── run_scan — integration-style tests with mocked sources ─────────────────
 
 
@@ -286,7 +304,7 @@ class TestRunScan:
             for p in patches:
                 p.stop()
 
-        assert result["risk_score"] == 65
+        assert result["risk_score"] == 60
         assert result["risk_level"] == "HIGH"
 
     def test_url_scan_routes_to_url_sources(self):

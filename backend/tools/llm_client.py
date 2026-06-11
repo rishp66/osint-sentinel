@@ -159,7 +159,11 @@ def call_llm(
 
 
 def synthesize(target: str, sources: list[dict], timeout: int = 30) -> dict:
-    """Return {'threat_brief': str, 'risk_score': int, 'risk_level': str}."""
+    """Return {'threat_brief': str, 'risk_score': int, 'risk_level': str}.
+
+    Raises when the provider cannot be reached or is not configured so callers
+    can fall back to deterministic scoring from raw source data.
+    """
     user_content = (
         f"Target: {target}\n\n"
         "<source_data>\n"
@@ -178,11 +182,7 @@ def synthesize(target: str, sources: list[dict], timeout: int = 30) -> dict:
             raw = parts[1].strip() if len(parts) >= 3 else raw
     except Exception as e:
         logger.error("LLM synthesis failed: %s", e)
-        return {
-            "threat_brief": "LLM synthesis temporarily unavailable.",
-            "risk_score": 0,
-            "risk_level": "UNKNOWN",
-        }
+        raise RuntimeError("LLM synthesis failed") from e
 
     try:
         result = json.loads(raw)

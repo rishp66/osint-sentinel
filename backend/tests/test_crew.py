@@ -277,6 +277,38 @@ class TestRunScan:
             for s in error_srcs
         )
 
+    def test_llm_failure_uses_raw_source_score(self):
+        patches = [
+            patch(
+                "agents.crew.query_virustotal",
+                return_value={"source": "virustotal", "malicious": 12},
+            ),
+            patch(
+                "agents.crew.query_hybrid_analysis",
+                return_value=_src("hybrid_analysis"),
+            ),
+            patch(
+                "agents.crew.query_malwarebazaar",
+                return_value=_src("malwarebazaar"),
+            ),
+            patch("agents.crew.query_threatfox", return_value=_src("threatfox")),
+            patch("agents.crew.query_urlhaus", return_value=_src("urlhaus")),
+            patch("agents.crew.query_pulsedive", return_value=_src("pulsedive")),
+            patch("agents.crew.synthesize", side_effect=RuntimeError("LLM down")),
+            patch("agents.crew.generate_report", return_value=MOCK_REPORT),
+        ]
+        for p in patches:
+            p.start()
+        try:
+            result = run_scan("44d88612fea8a8f36de82e1278abb02f")
+        finally:
+            for p in patches:
+                p.stop()
+
+        assert result["risk_score"] == 40
+        assert result["risk_level"] == "MEDIUM"
+        assert "raw intelligence data" in result["threat_brief"]
+
 
 class TestResolvedPrivateIPBlocked:
     def test_domain_resolving_to_private_ip_rejected(self):

@@ -3,6 +3,8 @@
 import json
 from unittest.mock import patch, MagicMock
 
+import pytest
+
 from tools.llm_client import synthesize, score_to_level as _score_to_level
 
 
@@ -87,10 +89,8 @@ class TestScoreToLevel:
 class TestSynthesize:
     def test_missing_key_returns_unknown(self):
         with patch("tools.llm_client.get_settings", return_value=_settings("")):
-            r = synthesize("example.com", [])
-        assert r["risk_level"] == "UNKNOWN"
-        assert r["risk_score"] == 0
-        assert "unavailable" in r["threat_brief"]
+            with pytest.raises(RuntimeError, match="LLM synthesis failed"):
+                synthesize("example.com", [])
 
     def test_success_clean_json(self):
         payload = (
@@ -134,10 +134,8 @@ class TestSynthesize:
         mock_inst.post.side_effect = Exception("Connection refused")
         with patch("tools.llm_client.get_settings", return_value=_settings("key/user")):
             with patcher:
-                r = synthesize("example.com", [])
-        assert r["risk_level"] == "UNKNOWN"
-        assert r["risk_score"] == 0
-        assert "unavailable" in r["threat_brief"]
+                with pytest.raises(RuntimeError, match="LLM synthesis failed"):
+                    synthesize("example.com", [])
 
     def test_bad_json_falls_back_to_raw_text(self):
         raw_text = "This is a plain-text threat brief, not JSON."
@@ -232,14 +230,12 @@ class TestProviderRouting:
         s = _settings(provider="groq")
         s.groq_api_key = _FakeSecretStr("")
         with patch("tools.llm_client.get_settings", return_value=s):
-            r = synthesize("example.com", [])
-        assert r["risk_level"] == "UNKNOWN"
-        assert "unavailable" in r["threat_brief"]
+            with pytest.raises(RuntimeError, match="LLM synthesis failed"):
+                synthesize("example.com", [])
 
     def test_missing_anthropic_key_returns_error(self):
         s = _settings(provider="anthropic")
         s.anthropic_api_key = _FakeSecretStr("")
         with patch("tools.llm_client.get_settings", return_value=s):
-            r = synthesize("example.com", [])
-        assert r["risk_level"] == "UNKNOWN"
-        assert "unavailable" in r["threat_brief"]
+            with pytest.raises(RuntimeError, match="LLM synthesis failed"):
+                synthesize("example.com", [])

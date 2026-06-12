@@ -56,6 +56,26 @@ def _compute_raw_score(sources: list[dict]) -> int:
     return min(score, 100)
 
 
+def _raw_score_synthesis(sources: list[dict], threat_brief: str | None = None) -> dict:
+    """Build a scored fallback when LLM output is missing or unscored."""
+    fallback_score = _compute_raw_score(sources)
+    return {
+        "threat_brief": threat_brief
+        or "LLM synthesis unavailable — raw intelligence data collected above.",
+        "risk_score": fallback_score,
+        "risk_level": score_to_level(fallback_score),
+    }
+
+
+def _is_unscored_synthesis(synthesis: dict) -> bool:
+    """Return True when synthesize() supplied no usable risk score."""
+    try:
+        score = int(synthesis.get("risk_score", 0))
+    except (TypeError, ValueError):
+        return True
+    return score == 0 and str(synthesis.get("risk_level", "")).upper() == "UNKNOWN"
+
+
 # Bounded LRU cache: evicts the oldest entry once _CACHE_MAX is exceeded so a
 # steady stream of unique targets cannot grow memory without bound. Reads also
 # enforce a TTL window before returning a cached result.
@@ -372,12 +392,13 @@ def run_scan(target: str) -> dict:
         try:
             synthesis = f_synth.result(timeout=35)
         except Exception:
-            _fb_score = _compute_raw_score(sources)
-            synthesis = {
-                "threat_brief": "LLM synthesis unavailable — raw intelligence data collected above.",
-                "risk_score": _fb_score,
-                "risk_level": score_to_level(_fb_score),
-            }
+            synthesis = _raw_score_synthesis(sources)
+        else:
+            if _is_unscored_synthesis(synthesis):
+                brief = synthesis.get("threat_brief")
+                if brief == "LLM synthesis temporarily unavailable.":
+                    brief = None
+                synthesis = _raw_score_synthesis(sources, brief)
         try:
             agent_report = f_report.result(timeout=45)
         except Exception:

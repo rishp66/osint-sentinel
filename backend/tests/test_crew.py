@@ -277,6 +277,40 @@ class TestRunScan:
             for s in error_srcs
         )
 
+    def test_unscored_llm_failure_uses_raw_source_score(self):
+        """run_scan must not hide raw detections when synthesize() returns UNKNOWN/0."""
+        patches = _patch_all()
+        for i, p in enumerate(patches):
+            if p.attribute == "query_virustotal":
+                patches[i] = patch(
+                    "agents.crew.query_virustotal",
+                    return_value={
+                        "source": "virustotal",
+                        "malicious": 25,
+                        "_query_time_ms": 50.0,
+                    },
+                )
+            elif p.attribute == "synthesize":
+                patches[i] = patch(
+                    "agents.crew.synthesize",
+                    return_value={
+                        "threat_brief": "LLM synthesis temporarily unavailable.",
+                        "risk_score": 0,
+                        "risk_level": "UNKNOWN",
+                    },
+                )
+        for p in patches:
+            p.start()
+        try:
+            result = run_scan("example.com")
+        finally:
+            for p in patches:
+                p.stop()
+
+        assert result["risk_score"] == 40
+        assert result["risk_level"] == "MEDIUM"
+        assert "raw intelligence data" in result["threat_brief"]
+
 
 class TestResolvedPrivateIPBlocked:
     def test_domain_resolving_to_private_ip_rejected(self):
